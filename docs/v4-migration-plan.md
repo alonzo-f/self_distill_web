@@ -91,7 +91,7 @@
 | 5 | 挖矿物理惩罚（延迟 + 飘移） | ✅ | P0 | 0.5 d | 4 |
 | 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ✅ | P0 | 2 d | 0, 4, 5 |
 | 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ✅ | P0 | 1.5 d | 6 |
-| 8 | 投影墙 4 象限改造 + Builder 永久地基 | ⬜ | P0 | 2 d | 0 |
+| 8 | 投影墙 4 象限改造 + Builder 永久地基 | ✅ | P0 | 2 d | 0 |
 | 9 | 后门体验：粒子动画 + 数字护照 + 攻击 token | ⬜ | P1 | 3.5 d | 6, 8 |
 | 10 | Operator 系统完善 | ⬜ | P1 | 1 d | 8 |
 | 11 | PSA 视频制作（编剧/导演 + 配音） | ⬜ | P1 | 3 d | 无（并行） |
@@ -707,7 +707,14 @@ export function allocateGame(compliance: number): 'GUESS' | 'BLACKJACK' | 'SLOTS
 
 ---
 
-### 阶段 8：投影墙 4 象限改造 + Builder 永久地基  ⬜  P0  2d
+### 阶段 8：投影墙 4 象限改造 + Builder 永久地基  ✅  P0  2d  （完成于 2026-05-20）
+
+**实现笔记**：
+- B 板块（粒子）采用 CSS-only 近似（每用户 = 照片纹理 + 8 颗确定性散布字符），保留 Three.js 全量粒子留给 P2 演出准备阶段
+- D 板块独立 polling `/api/graveyard`（30s tick，区别 realtime 节奏），从 DB 读 `is_permanent=true` 的 Builder 行做永久地基（金色）
+- C 板块以 participants diff 推断 join/archive 事件，Phase 9/10 可经 broadcast 推送更多事件类型
+- A 板块前 5 位常驻 + 6+ 用 ticker 水平滚动（CSS transform）
+- Builder seed 在 Phase 0 已写入；wall 不再使用硬编码 BUILDERS 常量
 
 **目标：** `/wall` 从 5 面板改为 4 象限。
 
@@ -1008,7 +1015,7 @@ interface GraveyardEntry {
 阶段 5   ✅  挖矿物理惩罚 (延迟 + 飘移)                  (2026-05-20)
 阶段 6   ✅  休闲三游戏 + 负分淘汰                        (2026-05-20)
 阶段 7   ✅  坟墓动画 + Ghost 锁屏                        (2026-05-20)
-阶段 8   ⬜  投影墙 4 象限
+阶段 8   ✅  投影墙 4 象限 + Builder 永久地基             (2026-05-20)
 阶段 9   ⬜  后门体验
 阶段 10  ⬜  Operator 完善
 阶段 11  ⬜  PSA 视频
@@ -1030,3 +1037,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 5 完成：新建 `components/MiningButton.tsx`（单组件承载 normal/delay/drift 三态：delay 用 `setTimeout(onClick, 500)` + 等待期禁用 + cursor-wait + "▣ PROCESSING..." 文案；drift 用 `setInterval(3000)` 在 ±40px X / ±20px Y 范围内随机平移，`transition-transform duration-300` 平滑动画）；改造 `app/mine/page.tsx` 读取 `store.userRatingTier` → `TIER_PARAMS` 得到 `buttonBehavior` + tier-aware mining params；替换原 inline `<button>` 为 `<MiningButton>`；按钮下方加入低调的 tier 提示行（"Optimization profile {tier} · response latency adjusted/manual stability low"，仅在非 normal 时显示）。`npx next build` 通过，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 6 完成：新建 `lib/leisure-allocator.ts`（Compliance 阈值 70/30 分流 SLOTS/GUESS/BLACKJACK + GAME_ROUTES + ENGAGEMENT_PER_BET）；`lib/leisure-stats.ts`（独立 localStorage key 持久化 wagered/earned/betCount）；`lib/use-leisure-betting.ts`（共享下注 hook：扣 credits + 加 engagement + recordBet + 负分自动 push settlement）；重写 `app/leisure/page.tsx` 为纯分发器（allocate → 初始化 credits=miningCredits → replace 到游戏页）；新建 `app/leisure/guess/page.tsx`（猜大小 + AUTO 65% 胜率 AI 抽 30%）、`app/leisure/blackjack/page.tsx`（21 点 Lite + HIT/STAND + 庄家到 17 + AUTO 基本策略 AI 抽 30%）、`app/leisure/slots/page.tsx`（三轮老虎机 + match3 5× / match2 1.5× + AUTO-SPIN×5）；新建 `components/LeisureHeader.tsx`（共享 CR / EP 状态条）；新建 `app/leisure/settlement/page.tsx`（结算 + phase=GHOST 持久化到本地 + 服务器；坟墓动画占位）；新建 `app/ghost/page.tsx` stub（系统消息 + Wall 外链 + dark pattern Exit）。`npx next build` 通过（17 → 22 路由），`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 7 完成：新建 `lib/audio/eight-bit.ts`（原生 Web Audio API 合成 C4→G3 square 滑音 300ms + A1 triangle drone 1s + iOS unlockAudio）；新建 `components/TombSprite.tsx`（16×16 手画像素坟墓 + 两帧 6fps 月光闪烁）；新建 `components/TombAnimation.tsx`（3.5s 时间线：intro / pixelate / shatter 8 strips / tomb + SFX / name 淡入 / archived 淡入 / done 回调）；重写 `app/leisure/settlement/page.tsx` 嵌入 TombAnimation，动画完成后才 reveal 结算面板；重写 `app/ghost/page.tsx` 锁屏到 `<iframe src="/wall">` 全屏镜像，右上 [Exit] 触发 dark pattern modal（Stay 加粗高亮默认 / Leave 触发 startOver）。`npx next build` 通过 22 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 8 完成（**P0 收官**）：新建 `app/api/graveyard/route.ts`（拉取 `is_permanent=false + archived_at IS NOT NULL` 最近 12 条 + 全部 Builder 行，返回 `GraveyardEntry[]`）；新建 4 个象限组件 `components/wall/{QuadrantA_AtRisk,QuadrantB_Particles,QuadrantC_Announcements,QuadrantD_Graveyard}.tsx`；A 板块按 `emotional_noise_score` 倒序，前 5 位常驻 + 6+ 水平 ticker（CSS transform 平移）；B 板块每位用户=照片纹理 + 8 颗确定性 hash 散布字符 + Operator/me 光环；C 板块根据 participants diff 推断 join/archive 事件，TTL 8s 自动淘汰；D 板块独立 30s polling `/api/graveyard`，BUILDER_01/02 永久金色加粗在底；重写 `app/wall/page.tsx` 为 4 象限 grid，保留 v3 的 Realtime + polling fallback，删除硬编码 BUILDERS 常量。`npx next build` 通过 23 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
