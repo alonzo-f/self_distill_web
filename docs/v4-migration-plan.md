@@ -83,7 +83,7 @@
 
 | # | 阶段 | 状态 | 优先级 | 工期 | 依赖 |
 |---|------|------|--------|------|------|
-| 0 | 数据模型 + 状态机基础 | ⬜ | P0 | 1.5 d | 无 |
+| 0 | 数据模型 + 状态机基础 | ✅ | P0 | 1.5 d | 无 |
 | 1 | PSA 入场 + 注册改造（含昵称） | ⬜ | P0 | 1.5 d | 0 |
 | 2 | HR 题库 + 1-50 词限制 | ⬜ | P0 | 0.5 d | 0 |
 | 3 | Hub 主页 + 路由守卫 + Exit/重入规则 | ⬜ | P0 | 2.5 d | 0, 1, 2 |
@@ -106,7 +106,7 @@
 
 ## 3. 阶段详情
 
-### 阶段 0：数据模型 + 状态机基础  ⬜  P0  1.5d
+### 阶段 0：数据模型 + 状态机基础  ✅  P0  1.5d  （完成于 2026-05-20）
 
 **目标：** 为整个 v4 改造打下数据地基。先建表 + 类型 + 状态机，再做业务页。
 
@@ -979,7 +979,7 @@ interface GraveyardEntry {
 ### 当前进度
 
 ```
-阶段 0   ⬜  数据模型 + 状态机基础
+阶段 0   ✅  数据模型 + 状态机基础                    (2026-05-20)
 阶段 1   ⬜  PSA 入场 + 注册改造
 阶段 2   ⬜  HR 题库 + 1-50 词限制
 阶段 3   ⬜  Hub 主页 + 路由守卫 + Exit/重入
@@ -1001,3 +1001,4 @@ interface GraveyardEntry {
 | 日期 | 变更 | 作者 |
 |------|------|------|
 | 2026-05-20 | 初版创建，基于 v4 文档（commit `32300c5`）拆分 12 阶段 | Claude / Y90133 |
+| 2026-05-20 | 阶段 0 完成：新建 `202605200001_v4_schema_changes.sql`（新增 9 字段 + backdoor_attacks 表 + 索引 + RLS + Builder seed）；扩充 `types/index.ts`（UserPhase / RatingTier / LeisureGame / BackdoorAttackType）；重写 `lib/participants/types.ts`（WallParticipant + GraveyardEntry）；新建 `lib/state-machine.ts`（PHASE_ORDER / classifyRoute / canStartOver / STAGE_TIMEOUTS_MS）+ `lib/local-storage.ts`（PersistedSession + 不可变 setSnapshot）；扩充 `stores/participant-store.ts`（v4 字段 + setPhase / setRatingTier / spendAttackToken / archive）；同步 `lib/participants/repository.ts` 至 v4 字段。`tsc --noEmit` + `eslint` 通过；本地 migration up 成功，验证 BUILDER_01/02 seed 已写入且 `is_permanent=true / phase=BACKDOOR_FOUND` | Claude / Y90133 |

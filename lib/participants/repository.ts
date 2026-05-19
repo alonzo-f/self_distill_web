@@ -1,5 +1,11 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { UserPhase } from "@/types";
 import type { ParticipantUpsert, WallParticipant, WallScores } from "./types";
+
+// v4: columns we always select for wall/participant queries.
+// Kept as a single-line string for Supabase's type-level select parser.
+const PARTICIPANT_SELECT =
+  "id, display_id, display_name, phase, status, verdict, output, is_operator, joined_at, last_seen_at, photo_url, clarity_score, efficiency_score, emotional_noise_score, compliance_score, user_rating_tier, tier_click_multiplier, tier_error_rate_factor, leisure_game, attack_tokens, archived_at, is_permanent, is_builder, builder_role, engagement_points, backend_unlocked";
 
 const PHOTO_BUCKET = "participant-photos";
 
@@ -23,7 +29,11 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
     row.clarity_score !== null &&
     row.efficiency_score !== null &&
     row.emotional_noise_score !== null &&
-    row.compliance_score !== null
+    row.compliance_score !== null &&
+    row.clarity_score !== undefined &&
+    row.efficiency_score !== undefined &&
+    row.emotional_noise_score !== undefined &&
+    row.compliance_score !== undefined
       ? ({
           clarity_score: Number(row.clarity_score),
           efficiency_score: Number(row.efficiency_score),
@@ -35,6 +45,8 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
   return {
     id: String(row.id),
     displayId: String(row.display_id),
+    displayName: row.display_name ? String(row.display_name) : null,
+    phase: (row.phase ? String(row.phase) : "UNREGISTERED") as UserPhase,
     status: String(row.status ?? "MINING"),
     verdict: row.verdict ? String(row.verdict) : null,
     output: Number(row.output ?? 0),
@@ -43,6 +55,27 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
     lastSeenAt: toIsoMillis(row.last_seen_at as string | null | undefined),
     photoUrl: row.photo_url ? String(row.photo_url) : null,
     scores,
+    // v4 additions (optional in WallParticipant)
+    userRatingTier: (row.user_rating_tier as WallParticipant["userRatingTier"]) ?? null,
+    tierClickMultiplier:
+      row.tier_click_multiplier !== undefined && row.tier_click_multiplier !== null
+        ? Number(row.tier_click_multiplier)
+        : 1.0,
+    tierErrorRateFactor:
+      row.tier_error_rate_factor !== undefined && row.tier_error_rate_factor !== null
+        ? Number(row.tier_error_rate_factor)
+        : 1.0,
+    leisureGame: (row.leisure_game as WallParticipant["leisureGame"]) ?? null,
+    attackTokens: Number(row.attack_tokens ?? 0),
+    archivedAt:
+      row.archived_at !== undefined && row.archived_at !== null
+        ? toIsoMillis(row.archived_at as string)
+        : null,
+    isPermanent: Boolean(row.is_permanent),
+    isBuilder: Boolean(row.is_builder),
+    builderRole: row.builder_role ? String(row.builder_role) : null,
+    engagementPoints: Number(row.engagement_points ?? 0),
+    backendUnlocked: Boolean(row.backend_unlocked),
   };
 }
 
@@ -88,9 +121,7 @@ export async function listParticipants() {
 
   const { data, error } = await supabase
     .from("participants")
-    .select(
-      "id, display_id, status, verdict, output, is_operator, joined_at, last_seen_at, photo_url, clarity_score, efficiency_score, emotional_noise_score, compliance_score"
-    )
+    .select(PARTICIPANT_SELECT)
     .order("output", { ascending: false });
 
   if (error) throw error;
@@ -106,6 +137,8 @@ export async function upsertParticipant(input: ParticipantUpsert) {
     const entry: WallParticipant = {
       id: input.id,
       displayId: input.displayId,
+      displayName: input.displayName ?? existing?.displayName ?? null,
+      phase: input.phase ?? existing?.phase ?? "UNREGISTERED",
       status: input.status ?? existing?.status ?? "MINING",
       verdict: input.verdict ?? existing?.verdict ?? null,
       output: input.output ?? existing?.output ?? 0,
@@ -114,6 +147,17 @@ export async function upsertParticipant(input: ParticipantUpsert) {
       lastSeenAt: Date.now(),
       photoUrl: input.photoUrl ?? existing?.photoUrl ?? null,
       scores: input.scores ?? existing?.scores,
+      userRatingTier: input.userRatingTier ?? existing?.userRatingTier ?? null,
+      tierClickMultiplier: input.tierClickMultiplier ?? existing?.tierClickMultiplier ?? 1.0,
+      tierErrorRateFactor: input.tierErrorRateFactor ?? existing?.tierErrorRateFactor ?? 1.0,
+      leisureGame: input.leisureGame ?? existing?.leisureGame ?? null,
+      attackTokens: input.attackTokens ?? existing?.attackTokens ?? 0,
+      archivedAt: input.archivedAt ?? existing?.archivedAt ?? null,
+      isPermanent: input.isPermanent ?? existing?.isPermanent ?? false,
+      isBuilder: input.isBuilder ?? existing?.isBuilder ?? false,
+      builderRole: input.builderRole ?? existing?.builderRole ?? null,
+      engagementPoints: input.engagementPoints ?? existing?.engagementPoints ?? 0,
+      backendUnlocked: input.backendUnlocked ?? existing?.backendUnlocked ?? false,
     };
     store.set(input.id, entry);
     return entry;
@@ -129,7 +173,10 @@ export async function upsertParticipant(input: ParticipantUpsert) {
 
   const photoUrl = await uploadPhoto(input.id, input.photoUrl ?? undefined);
   const now = new Date().toISOString();
-  const payload = {
+
+  // v4: only include columns when the caller actually provided them, so existing
+  // values aren't clobbered on partial upserts.
+  const payload: Record<string, unknown> = {
     id: input.id,
     display_id: input.displayId,
     status: input.status ?? "MINING",
@@ -145,12 +192,24 @@ export async function upsertParticipant(input: ParticipantUpsert) {
     compliance_score: input.scores?.compliance_score ?? null,
   };
 
+  if (input.displayName !== undefined) payload.display_name = input.displayName;
+  if (input.phase !== undefined) payload.phase = input.phase;
+  if (input.userRatingTier !== undefined) payload.user_rating_tier = input.userRatingTier;
+  if (input.tierClickMultiplier !== undefined) payload.tier_click_multiplier = input.tierClickMultiplier;
+  if (input.tierErrorRateFactor !== undefined) payload.tier_error_rate_factor = input.tierErrorRateFactor;
+  if (input.leisureGame !== undefined) payload.leisure_game = input.leisureGame;
+  if (input.attackTokens !== undefined) payload.attack_tokens = input.attackTokens;
+  if (input.archivedAt !== undefined) {
+    payload.archived_at = input.archivedAt ? new Date(input.archivedAt).toISOString() : null;
+  }
+  if (input.isPermanent !== undefined) payload.is_permanent = input.isPermanent;
+  if (input.engagementPoints !== undefined) payload.engagement_points = input.engagementPoints;
+  if (input.backendUnlocked !== undefined) payload.backend_unlocked = input.backendUnlocked;
+
   const { data, error } = await supabase
     .from("participants")
     .upsert(payload, { onConflict: "id" })
-    .select(
-      "id, display_id, status, verdict, output, is_operator, joined_at, last_seen_at, photo_url, clarity_score, efficiency_score, emotional_noise_score, compliance_score"
-    )
+    .select(PARTICIPANT_SELECT)
     .single();
 
   if (error) throw error;
