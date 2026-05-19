@@ -33,6 +33,8 @@ interface ParticipantState {
   verdict: Verdict | null;
 
   // Expression
+  promptKey: string | null;       // v4: which HR question was assigned
+  promptText: string | null;      // v4: denormalized for AI prompt construction
   originalText: string | null;
   distilledText: string | null;
 
@@ -101,6 +103,8 @@ const initialState = {
   photoBlob: null,
   status: "UNPROCESSED" as ParticipantStatus,
   verdict: null,
+  promptKey: null,
+  promptText: null,
   originalText: null,
   distilledText: null,
   scores: null,

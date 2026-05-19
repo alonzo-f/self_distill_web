@@ -60,7 +60,8 @@ export default function BenchmarkPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: store.id,
-          promptText: "expression task",
+          // v4: pass the actual HR question so the scoring AI sees the context.
+          promptText: store.promptText ?? "expression task",
           userInput: store.originalText || "",
           inputDurationSec: metrics.totalDurationSec,
           pauseCount: metrics.pauseCount,

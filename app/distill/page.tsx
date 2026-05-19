@@ -40,7 +40,8 @@ export default function DistillPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: store.id,
-          promptText: "expression task",
+          // v4: pass the actual HR question so the AI knows what's being answered.
+          promptText: store.promptText ?? "expression task",
           userInput: originalText,
         }),
       });
