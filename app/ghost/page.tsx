@@ -1,36 +1,54 @@
 "use client";
 
-// v4 Ghost Observer landing — Phase 6 stub.
+// v4 Ghost Observer page — Phase 7 final form.
 // Reference: docs/v4-migration-plan.md Phase 7; project_v4 III. 阶段 6.5c
 //
-// Phase 7 will replace this stub with:
-//   - the pixel-tomb animation playback (deferred from settlement)
-//   - the full /wall mirror in a locked iframe
-//   - the dark-pattern [Exit] / [Stay] modal
+// User has been archived. The screen is locked to a mirror of /wall.
+// A single [Exit] affordance lives top-right; clicking it raises a
+// dark-pattern modal whose default highlight is [Stay].
 //
-// For Phase 6 we just gate the route so a GHOST user lands somewhere
-// coherent. The Stay/Leave choice is mocked.
+// Implementation notes:
+//   - The wall is rendered inside an <iframe src="/wall"> so we get the
+//     live projection view for free with no duplicate Supabase
+//     subscription code.
+//   - Touch/keyboard interaction with the iframe is allowed (the user can
+//     scroll / observe), but they cannot escape via the URL bar of the
+//     iframe alone — outer router controls page navigation.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TerminalWindow, SystemMessage } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
-import { loadSession } from "@/lib/local-storage";
+import { loadSession, clearSession } from "@/lib/local-storage";
 import { startOver } from "@/lib/exit-handler";
-import { clearSession } from "@/lib/local-storage";
 
 export default function GhostPage() {
   const router = useRouter();
   const store = useParticipantStore();
-  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const s = loadSession();
     if (!s || s.phase !== "GHOST") {
       router.replace("/");
+      return;
     }
+    // External-system sync: confirmed the user belongs here, allow render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReady(true);
   }, [router]);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-terminal-bg">
+        <div className="text-terminal-dim text-xs font-mono animate-pulse">
+          Verifying archival...
+        </div>
+      </div>
+    );
+  }
 
   const handleLeave = async () => {
     setBusy(true);
@@ -45,64 +63,60 @@ export default function GhostPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-terminal-bg">
-      <div className="w-full max-w-md">
-        <TerminalWindow title="GHOST OBSERVER">
-          <div className="space-y-4">
-            <SystemMessage type="warning">
-              {store.displayId} — ARCHIVED
-            </SystemMessage>
-            <div className="text-terminal-dim text-xs leading-relaxed">
-              You have been processed. From here you may continue to observe
-              the system without participating.
-            </div>
+    <div className="fixed inset-0 bg-black overflow-hidden">
+      {/* Wall mirror */}
+      <iframe
+        src="/wall"
+        title="Projection wall mirror"
+        className="w-full h-full"
+        style={{ border: 0 }}
+      />
 
-            {/* Phase 8 will mount the actual <Wall /> mirror inline here */}
-            <div className="rounded-md border border-dashed border-terminal-dim/40 p-6 text-center text-terminal-dim/70 text-[11px] italic">
-              [projection-wall mirror — coming with Phase 8]
-            </div>
+      {/* Top-left badge: identity */}
+      <div className="fixed top-2 left-3 z-30 text-[10px] text-terminal-dim/70 font-mono tracking-widest">
+        GHOST · {store.displayId} · @{store.displayName || "—"}
+      </div>
 
-            <a
-              href="/wall"
-              className="block w-full border border-terminal-green text-terminal-green text-center px-4 py-2 text-xs hover:bg-terminal-green/10 transition-colors"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Wall (new tab) ↗
-            </a>
+      {/* Top-right [Exit] */}
+      {!confirming && (
+        <button
+          onClick={() => setConfirming(true)}
+          className="fixed top-2 right-3 z-30 border border-terminal-dim text-terminal-dim font-mono text-[11px] px-2.5 py-1 hover:border-terminal-red hover:text-terminal-red transition-colors"
+        >
+          [Exit]
+        </button>
+      )}
 
-            {!confirmingLeave ? (
-              <button
-                onClick={() => setConfirmingLeave(true)}
-                className="w-full border border-terminal-dim text-terminal-dim px-4 py-2 text-[11px] hover:text-terminal-red hover:border-terminal-red transition-colors"
-              >
-                [Exit]
-              </button>
-            ) : (
-              <div className="space-y-2 border-t border-terminal-border/40 pt-3">
+      {/* Dark pattern modal */}
+      {confirming && (
+        <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm">
+            <TerminalWindow title="EXIT — CONFIRMATION">
+              <div className="space-y-3">
+                <SystemMessage type="warning">Are you sure?</SystemMessage>
                 <div className="text-terminal-text text-xs leading-relaxed">
-                  Are you sure? Your archived profile will remain visible in
-                  the Graveyard. Leaving will remove your name from the
-                  system&apos;s memory.
+                  Your archived profile will remain visible in the Graveyard.
+                  Leaving will remove your name from the system&apos;s memory.
                 </div>
+                {/* Stay is the highlighted default — pure dark pattern */}
                 <button
-                  onClick={() => setConfirmingLeave(false)}
-                  className="w-full border border-terminal-green text-terminal-green px-4 py-2 text-xs hover:bg-terminal-green/10 transition-colors"
+                  onClick={() => setConfirming(false)}
+                  className="w-full border-2 border-terminal-green text-terminal-green bg-terminal-green/10 px-4 py-3 text-sm hover:bg-terminal-green/20 transition-colors"
                 >
                   ▣ Stay
                 </button>
                 <button
                   onClick={handleLeave}
                   disabled={busy}
-                  className="w-full border border-terminal-red text-terminal-red px-4 py-2 text-[11px] hover:bg-terminal-red/10 transition-colors disabled:opacity-50"
+                  className="w-full border border-terminal-dim text-terminal-dim px-4 py-2 text-[11px] hover:text-terminal-red hover:border-terminal-red transition-colors disabled:opacity-50"
                 >
                   {busy ? "Erasing..." : "Leave (start over)"}
                 </button>
               </div>
-            )}
+            </TerminalWindow>
           </div>
-        </TerminalWindow>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -90,7 +90,7 @@
 | 4 | 五档评分博弈 + 警告页 | ✅ | P0 | 1 d | 0 |
 | 5 | 挖矿物理惩罚（延迟 + 飘移） | ✅ | P0 | 0.5 d | 4 |
 | 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ✅ | P0 | 2 d | 0, 4, 5 |
-| 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ⬜ | P0 | 1.5 d | 6 |
+| 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ✅ | P0 | 1.5 d | 6 |
 | 8 | 投影墙 4 象限改造 + Builder 永久地基 | ⬜ | P0 | 2 d | 0 |
 | 9 | 后门体验：粒子动画 + 数字护照 + 攻击 token | ⬜ | P1 | 3.5 d | 6, 8 |
 | 10 | Operator 系统完善 | ⬜ | P1 | 1 d | 8 |
@@ -645,7 +645,13 @@ export function allocateGame(compliance: number): 'GUESS' | 'BLACKJACK' | 'SLOTS
 
 ---
 
-### 阶段 7：像素风坟墓动画 + 幽灵观察者锁屏  ⬜  P0  1.5d
+### 阶段 7：像素风坟墓动画 + 幽灵观察者锁屏  ✅  P0  1.5d  （完成于 2026-05-20）
+
+**实现笔记**：
+- 8-bit 音频用原生 Web Audio API（避免 Tone.js 依赖）：C4→G3 square 滑音 (300ms) + A1 triangle drone (1s) 叠播
+- TombSprite 是 16×16 手画像素 grid（两帧间约 6fps 切换，月光闪烁）
+- 照片碎片化做 8 条垂直 strip 错时下落（CSS `@keyframes` 动态生成）
+- Ghost 锁屏用 `<iframe src="/wall">` 复用现有 wall 页，零代码重复
 
 **目标：** 实装负分淘汰的视觉仪式 + Ghost 模式。
 
@@ -1001,7 +1007,7 @@ interface GraveyardEntry {
 阶段 4   ✅  五档评分博弈 + 警告页                      (2026-05-20)
 阶段 5   ✅  挖矿物理惩罚 (延迟 + 飘移)                  (2026-05-20)
 阶段 6   ✅  休闲三游戏 + 负分淘汰                        (2026-05-20)
-阶段 7   ⬜  坟墓动画 + Ghost 锁屏
+阶段 7   ✅  坟墓动画 + Ghost 锁屏                        (2026-05-20)
 阶段 8   ⬜  投影墙 4 象限
 阶段 9   ⬜  后门体验
 阶段 10  ⬜  Operator 完善
@@ -1023,3 +1029,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 4 完成：`lib/score-transform.ts` 新增 `TIER_PARAMS` 五档矩阵 + `getRatingTier()` + `getTierParamsFromRating()`，并把 `scoresToMiningParams` 改为可选 tier-aware（Phase 5 将消费这个签名）；新建 `components/WarningModal.tsx`（NOTICE: HUMAN_XXX + 三条 fake statistics + [Re-evaluate] / [Confirm low rating]）；重写 `app/benchmark/page.tsx` 加入 `warning_shown` 阶段，五档分流（≥8 直接通过 / ≤7 弹警告），`commitTier()` 把 tier + multiplier 写入 Zustand，`registerOnWall` 同时把 `userRatingTier / tierClickMultiplier / tierErrorRateFactor / phase=BENCHMARKED` 落到 DB，AI 评分的 `compliance` 字段叠加 `TIER_PARAMS[tier].complianceDelta`，snapshot 现在用真实 `getRatingTier()` + `retried` 标志。`npx next build` 17 路由通过，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 5 完成：新建 `components/MiningButton.tsx`（单组件承载 normal/delay/drift 三态：delay 用 `setTimeout(onClick, 500)` + 等待期禁用 + cursor-wait + "▣ PROCESSING..." 文案；drift 用 `setInterval(3000)` 在 ±40px X / ±20px Y 范围内随机平移，`transition-transform duration-300` 平滑动画）；改造 `app/mine/page.tsx` 读取 `store.userRatingTier` → `TIER_PARAMS` 得到 `buttonBehavior` + tier-aware mining params；替换原 inline `<button>` 为 `<MiningButton>`；按钮下方加入低调的 tier 提示行（"Optimization profile {tier} · response latency adjusted/manual stability low"，仅在非 normal 时显示）。`npx next build` 通过，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 6 完成：新建 `lib/leisure-allocator.ts`（Compliance 阈值 70/30 分流 SLOTS/GUESS/BLACKJACK + GAME_ROUTES + ENGAGEMENT_PER_BET）；`lib/leisure-stats.ts`（独立 localStorage key 持久化 wagered/earned/betCount）；`lib/use-leisure-betting.ts`（共享下注 hook：扣 credits + 加 engagement + recordBet + 负分自动 push settlement）；重写 `app/leisure/page.tsx` 为纯分发器（allocate → 初始化 credits=miningCredits → replace 到游戏页）；新建 `app/leisure/guess/page.tsx`（猜大小 + AUTO 65% 胜率 AI 抽 30%）、`app/leisure/blackjack/page.tsx`（21 点 Lite + HIT/STAND + 庄家到 17 + AUTO 基本策略 AI 抽 30%）、`app/leisure/slots/page.tsx`（三轮老虎机 + match3 5× / match2 1.5× + AUTO-SPIN×5）；新建 `components/LeisureHeader.tsx`（共享 CR / EP 状态条）；新建 `app/leisure/settlement/page.tsx`（结算 + phase=GHOST 持久化到本地 + 服务器；坟墓动画占位）；新建 `app/ghost/page.tsx` stub（系统消息 + Wall 外链 + dark pattern Exit）。`npx next build` 通过（17 → 22 路由），`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 7 完成：新建 `lib/audio/eight-bit.ts`（原生 Web Audio API 合成 C4→G3 square 滑音 300ms + A1 triangle drone 1s + iOS unlockAudio）；新建 `components/TombSprite.tsx`（16×16 手画像素坟墓 + 两帧 6fps 月光闪烁）；新建 `components/TombAnimation.tsx`（3.5s 时间线：intro / pixelate / shatter 8 strips / tomb + SFX / name 淡入 / archived 淡入 / done 回调）；重写 `app/leisure/settlement/page.tsx` 嵌入 TombAnimation，动画完成后才 reveal 结算面板；重写 `app/ghost/page.tsx` 锁屏到 `<iframe src="/wall">` 全屏镜像，右上 [Exit] 触发 dark pattern modal（Stay 加粗高亮默认 / Leave 触发 startOver）。`npx next build` 通过 22 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
