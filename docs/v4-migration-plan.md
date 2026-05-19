@@ -89,7 +89,7 @@
 | 3 | Hub 主页 + 路由守卫 + Exit/重入规则 | ✅ | P0 | 2.5 d | 0, 1, 2 |
 | 4 | 五档评分博弈 + 警告页 | ✅ | P0 | 1 d | 0 |
 | 5 | 挖矿物理惩罚（延迟 + 飘移） | ✅ | P0 | 0.5 d | 4 |
-| 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ⬜ | P0 | 2 d | 0, 4, 5 |
+| 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ✅ | P0 | 2 d | 0, 4, 5 |
 | 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ⬜ | P0 | 1.5 d | 6 |
 | 8 | 投影墙 4 象限改造 + Builder 永久地基 | ⬜ | P0 | 2 d | 0 |
 | 9 | 后门体验：粒子动画 + 数字护照 + 攻击 token | ⬜ | P1 | 3.5 d | 6, 8 |
@@ -573,7 +573,13 @@ Would you like to reconsider your rating?
 
 ---
 
-### 阶段 6：休闲三游戏 + credit=点击数 + 负分淘汰  ⬜  P0  2d
+### 阶段 6：休闲三游戏 + credit=点击数 + 负分淘汰  ✅  P0  2d  （完成于 2026-05-20）
+
+**实现笔记**：
+- `app/leisure/page.tsx` 转为纯分发器（allocate → setLeisureGame → 初始化 credits → replace 到具体游戏路由）。坟墓动画 + Ghost 完整体验留给 Phase 7
+- `/ghost` 在 Phase 6 已 stub（系统消息 + Wall 外链 + dark pattern Exit），可让 phase=GHOST 用户落到稳定页面
+- 引入 `lib/leisure-stats.ts` 持久化累计 wagered/earned/betCount 到独立 localStorage key（Phase 9 数字护照将复用）
+- 共享下注逻辑由 `lib/use-leisure-betting.ts` 封装：扣 credits / 加 engagement / recordBet / 负分自动 push 到 `/leisure/settlement`
 
 **目标：** 重做休闲模式：三种游戏随机分配、初始 credit = 实际挖矿点击数、负分触发坟墓动画。
 
@@ -994,7 +1000,7 @@ interface GraveyardEntry {
 阶段 3   ✅  Hub 主页 + 路由守卫 + Exit/重入            (2026-05-20)
 阶段 4   ✅  五档评分博弈 + 警告页                      (2026-05-20)
 阶段 5   ✅  挖矿物理惩罚 (延迟 + 飘移)                  (2026-05-20)
-阶段 6   ⬜  休闲三游戏 + 负分淘汰
+阶段 6   ✅  休闲三游戏 + 负分淘汰                        (2026-05-20)
 阶段 7   ⬜  坟墓动画 + Ghost 锁屏
 阶段 8   ⬜  投影墙 4 象限
 阶段 9   ⬜  后门体验
@@ -1016,3 +1022,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 3 完成：状态机扩展（`/verdict` 纳入 `ROUTE_ORDER`，BENCHMARKED → `/verdict`；新增 `FREE_ROUTES`）；新建 `lib/exit-handler.ts`（`exitToHub` / `startOver`）；新建 `app/api/participants/[id]/route.ts` DELETE 端点（守 `is_permanent` 不可删）；新建 `components/RouteGuard.tsx`（客户端路由守卫，allow/redirect/readOnly 三态）；新建 `components/ReadOnlyOverlay.tsx`（per-stage snapshot 卡片 + Continue 推进）；新建 `components/HubButton.tsx`（[← Hub]，仅 Hub 解锁后显示）；新建 `app/hub/page.tsx`（identity + credits + engagement + recommended + explore grid + Exit 双步 dark pattern + Start Over GDPR 硬删除）；接入 `/calibrate /task /distill /benchmark /verdict /mine /leisure` 至 RouteGuard，各页 submit 时写 phase + immutable snapshot 进 localStorage；verdict 完成后送往 `/hub` 而非 `/mine`。`npx next build` 全部 17 路由编译通过，`tsc --noEmit` + `eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 4 完成：`lib/score-transform.ts` 新增 `TIER_PARAMS` 五档矩阵 + `getRatingTier()` + `getTierParamsFromRating()`，并把 `scoresToMiningParams` 改为可选 tier-aware（Phase 5 将消费这个签名）；新建 `components/WarningModal.tsx`（NOTICE: HUMAN_XXX + 三条 fake statistics + [Re-evaluate] / [Confirm low rating]）；重写 `app/benchmark/page.tsx` 加入 `warning_shown` 阶段，五档分流（≥8 直接通过 / ≤7 弹警告），`commitTier()` 把 tier + multiplier 写入 Zustand，`registerOnWall` 同时把 `userRatingTier / tierClickMultiplier / tierErrorRateFactor / phase=BENCHMARKED` 落到 DB，AI 评分的 `compliance` 字段叠加 `TIER_PARAMS[tier].complianceDelta`，snapshot 现在用真实 `getRatingTier()` + `retried` 标志。`npx next build` 17 路由通过，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 5 完成：新建 `components/MiningButton.tsx`（单组件承载 normal/delay/drift 三态：delay 用 `setTimeout(onClick, 500)` + 等待期禁用 + cursor-wait + "▣ PROCESSING..." 文案；drift 用 `setInterval(3000)` 在 ±40px X / ±20px Y 范围内随机平移，`transition-transform duration-300` 平滑动画）；改造 `app/mine/page.tsx` 读取 `store.userRatingTier` → `TIER_PARAMS` 得到 `buttonBehavior` + tier-aware mining params；替换原 inline `<button>` 为 `<MiningButton>`；按钮下方加入低调的 tier 提示行（"Optimization profile {tier} · response latency adjusted/manual stability low"，仅在非 normal 时显示）。`npx next build` 通过，`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 6 完成：新建 `lib/leisure-allocator.ts`（Compliance 阈值 70/30 分流 SLOTS/GUESS/BLACKJACK + GAME_ROUTES + ENGAGEMENT_PER_BET）；`lib/leisure-stats.ts`（独立 localStorage key 持久化 wagered/earned/betCount）；`lib/use-leisure-betting.ts`（共享下注 hook：扣 credits + 加 engagement + recordBet + 负分自动 push settlement）；重写 `app/leisure/page.tsx` 为纯分发器（allocate → 初始化 credits=miningCredits → replace 到游戏页）；新建 `app/leisure/guess/page.tsx`（猜大小 + AUTO 65% 胜率 AI 抽 30%）、`app/leisure/blackjack/page.tsx`（21 点 Lite + HIT/STAND + 庄家到 17 + AUTO 基本策略 AI 抽 30%）、`app/leisure/slots/page.tsx`（三轮老虎机 + match3 5× / match2 1.5× + AUTO-SPIN×5）；新建 `components/LeisureHeader.tsx`（共享 CR / EP 状态条）；新建 `app/leisure/settlement/page.tsx`（结算 + phase=GHOST 持久化到本地 + 服务器；坟墓动画占位）；新建 `app/ghost/page.tsx` stub（系统消息 + Wall 外链 + dark pattern Exit）。`npx next build` 通过（17 → 22 路由），`tsc + eslint` 全绿 | Claude / Y90133 |
