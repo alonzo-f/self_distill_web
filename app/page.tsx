@@ -17,6 +17,7 @@ export default function LandingPage() {
   const [displayId] = useState(() =>
     `HUMAN_${String(Math.floor(Math.random() * 999) + 1).padStart(3, "0")}`
   );
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const termsRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,10 @@ export default function LandingPage() {
 
   // Start camera
   const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera API not available. Please use HTTPS or try a different browser.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -44,9 +49,16 @@ export default function LandingPage() {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setCameraError(null);
       }
     } catch (err) {
       console.error("Camera access denied:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Permission") || msg.includes("NotAllowed")) {
+        setCameraError("Camera permission denied.");
+      } else {
+        setCameraError("Camera unavailable: " + msg);
+      }
     }
   }, []);
 
@@ -69,8 +81,12 @@ export default function LandingPage() {
     if (!ctx) return;
     canvasRef.current.width = 640;
     canvasRef.current.height = 480;
-    ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-    const dataUrl = canvasRef.current.toDataURL("image/jpeg", 0.8);
+    if (videoRef.current.srcObject) {
+      ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+    }
+    const dataUrl = videoRef.current.srcObject
+      ? canvasRef.current.toDataURL("image/jpeg", 0.8)
+      : null;
     setPhotoDataUrl(dataUrl);
 
     // Stop camera
@@ -198,20 +214,35 @@ export default function LandingPage() {
                   className="w-full h-full object-cover"
                   style={{ transform: "scaleX(-1)" }}
                 />
-                {/* Crosshair overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-48 h-48 border border-terminal-green/30 rounded-full" />
-                  <div className="absolute w-1 h-8 bg-terminal-green/30" />
-                  <div className="absolute w-8 h-1 bg-terminal-green/30" />
-                </div>
+                {cameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
+                    <p className="text-terminal-red text-xs text-center">{cameraError}</p>
+                  </div>
+                )}
+                {!cameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-48 h-48 border border-terminal-green/30 rounded-full" />
+                    <div className="absolute w-1 h-8 bg-terminal-green/30" />
+                    <div className="absolute w-8 h-1 bg-terminal-green/30" />
+                  </div>
+                )}
               </div>
               <canvas ref={canvasRef} className="hidden" />
-              <button
-                onClick={capturePhoto}
-                className="w-full border border-terminal-green text-terminal-green px-4 py-3 text-sm hover:bg-terminal-green/10 transition-colors"
-              >
-                ▣ Capture Biometric Data
-              </button>
+              {!cameraError ? (
+                <button
+                  onClick={capturePhoto}
+                  className="w-full border border-terminal-green text-terminal-green px-4 py-3 text-sm hover:bg-terminal-green/10 transition-colors"
+                >
+                  ▣ Capture Biometric Data
+                </button>
+              ) : (
+                <button
+                  onClick={capturePhoto}
+                  className="w-full border border-terminal-amber text-terminal-amber px-4 py-3 text-sm hover:bg-terminal-amber/10 transition-colors"
+                >
+                  ▣ Continue Without Photo
+                </button>
+              )}
             </div>
           </TerminalWindow>
         )}
