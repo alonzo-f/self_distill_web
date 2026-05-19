@@ -88,7 +88,7 @@
 | 2 | HR 题库 + 1-50 词限制 | ✅ | P0 | 0.5 d | 0 |
 | 3 | Hub 主页 + 路由守卫 + Exit/重入规则 | ✅ | P0 | 2.5 d | 0, 1, 2 |
 | 4 | 五档评分博弈 + 警告页 | ✅ | P0 | 1 d | 0 |
-| 5 | 挖矿物理惩罚（延迟 + 飘移） | ⬜ | P0 | 0.5 d | 4 |
+| 5 | 挖矿物理惩罚（延迟 + 飘移） | ✅ | P0 | 0.5 d | 4 |
 | 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ⬜ | P0 | 2 d | 0, 4, 5 |
 | 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ⬜ | P0 | 1.5 d | 6 |
 | 8 | 投影墙 4 象限改造 + Builder 永久地基 | ⬜ | P0 | 2 d | 0 |
@@ -536,7 +536,9 @@ Would you like to reconsider your rating?
 
 ---
 
-### 阶段 5：挖矿物理惩罚（延迟 + 飘移）  ⬜  P0  0.5d
+### 阶段 5：挖矿物理惩罚（延迟 + 飘移）  ✅  P0  0.5d  （完成于 2026-05-20）
+
+**实现笔记**：单一 `MiningButton` 组件承载三态（normal / delay / drift），避免组件爆炸；delay 用 `setTimeout(onClick, 500)` + 等待时禁用; drift 用 `setInterval(3000)` + CSS `transform: translate()` 平滑过渡。`scoresToMiningParams(scores, tierParams)` 现已在 `/mine` 应用 tier 修正系数。
 
 **目标：** 根据 `tier` 在 `/mine` 应用按钮延迟（4-5 档）或飘移（1-3 档）。
 
@@ -991,7 +993,7 @@ interface GraveyardEntry {
 阶段 2   ✅  HR 题库 + 1-50 词限制                      (2026-05-20)
 阶段 3   ✅  Hub 主页 + 路由守卫 + Exit/重入            (2026-05-20)
 阶段 4   ✅  五档评分博弈 + 警告页                      (2026-05-20)
-阶段 5   ⬜  挖矿物理惩罚
+阶段 5   ✅  挖矿物理惩罚 (延迟 + 飘移)                  (2026-05-20)
 阶段 6   ⬜  休闲三游戏 + 负分淘汰
 阶段 7   ⬜  坟墓动画 + Ghost 锁屏
 阶段 8   ⬜  投影墙 4 象限
@@ -1013,3 +1015,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 2 完成：重写 `lib/data/expression-prompts.ts` 为 10 题 HR 面试题题库 + 导出 `WORD_LIMIT_MIN/MAX` 与 `countWords()`；修改 `app/task/page.tsx` 应用 1-50 词硬限制（超 50 拒绝输入并红色 flash / 不足 1 词禁用 Submit / 120s 超时时若仍 <1 词不强制提交，等 Phase 3 路由守卫接管）；同时把 `promptKey + promptText` 写入 Zustand，让 `/distill` 与 `/benchmark` 不再使用 `"expression task"` 硬编码占位，而是把真实 HR 题文本传给 AI。`tsc --noEmit` + `eslint` 通过 | Claude / Y90133 |
 | 2026-05-20 | 阶段 3 完成：状态机扩展（`/verdict` 纳入 `ROUTE_ORDER`，BENCHMARKED → `/verdict`；新增 `FREE_ROUTES`）；新建 `lib/exit-handler.ts`（`exitToHub` / `startOver`）；新建 `app/api/participants/[id]/route.ts` DELETE 端点（守 `is_permanent` 不可删）；新建 `components/RouteGuard.tsx`（客户端路由守卫，allow/redirect/readOnly 三态）；新建 `components/ReadOnlyOverlay.tsx`（per-stage snapshot 卡片 + Continue 推进）；新建 `components/HubButton.tsx`（[← Hub]，仅 Hub 解锁后显示）；新建 `app/hub/page.tsx`（identity + credits + engagement + recommended + explore grid + Exit 双步 dark pattern + Start Over GDPR 硬删除）；接入 `/calibrate /task /distill /benchmark /verdict /mine /leisure` 至 RouteGuard，各页 submit 时写 phase + immutable snapshot 进 localStorage；verdict 完成后送往 `/hub` 而非 `/mine`。`npx next build` 全部 17 路由编译通过，`tsc --noEmit` + `eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 4 完成：`lib/score-transform.ts` 新增 `TIER_PARAMS` 五档矩阵 + `getRatingTier()` + `getTierParamsFromRating()`，并把 `scoresToMiningParams` 改为可选 tier-aware（Phase 5 将消费这个签名）；新建 `components/WarningModal.tsx`（NOTICE: HUMAN_XXX + 三条 fake statistics + [Re-evaluate] / [Confirm low rating]）；重写 `app/benchmark/page.tsx` 加入 `warning_shown` 阶段，五档分流（≥8 直接通过 / ≤7 弹警告），`commitTier()` 把 tier + multiplier 写入 Zustand，`registerOnWall` 同时把 `userRatingTier / tierClickMultiplier / tierErrorRateFactor / phase=BENCHMARKED` 落到 DB，AI 评分的 `compliance` 字段叠加 `TIER_PARAMS[tier].complianceDelta`，snapshot 现在用真实 `getRatingTier()` + `retried` 标志。`npx next build` 17 路由通过，`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 5 完成：新建 `components/MiningButton.tsx`（单组件承载 normal/delay/drift 三态：delay 用 `setTimeout(onClick, 500)` + 等待期禁用 + cursor-wait + "▣ PROCESSING..." 文案；drift 用 `setInterval(3000)` 在 ±40px X / ±20px Y 范围内随机平移，`transition-transform duration-300` 平滑动画）；改造 `app/mine/page.tsx` 读取 `store.userRatingTier` → `TIER_PARAMS` 得到 `buttonBehavior` + tier-aware mining params；替换原 inline `<button>` 为 `<MiningButton>`；按钮下方加入低调的 tier 提示行（"Optimization profile {tier} · response latency adjusted/manual stability low"，仅在非 normal 时显示）。`npx next build` 通过，`tsc + eslint` 全绿 | Claude / Y90133 |

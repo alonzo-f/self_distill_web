@@ -4,9 +4,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { TerminalWindow, SystemMessage, ProgressBar } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
-import { scoresToMiningParams } from "@/lib/score-transform";
+import {
+  scoresToMiningParams,
+  TIER_PARAMS,
+  type TierButtonBehavior,
+} from "@/lib/score-transform";
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
+import { MiningButton } from "@/components/MiningButton";
 
 export default function MinePage() {
   return (
@@ -31,18 +36,23 @@ function MineContent() {
   const aiIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clickResetRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // v4: derive mining params from benchmark scores AND the rating tier
+  // (tier supplies clickMultiplier / errorRateFactor penalties from Phase 4).
+  const tierParams = store.userRatingTier ? TIER_PARAMS[store.userRatingTier] : null;
   const params = useMemo(
     () =>
       store.scores
-        ? scoresToMiningParams(store.scores)
+        ? scoresToMiningParams(store.scores, tierParams ?? undefined)
         : {
             miningStability: 0.5,
             clickMultiplier: 1.0,
             errorRate: 0.2,
             operatorEligible: false,
           },
-    [store.scores]
+    [store.scores, tierParams],
   );
+
+  const buttonBehavior: TierButtonBehavior = tierParams?.buttonBehavior ?? "normal";
 
   // Countdown timer
   useEffect(() => {
@@ -159,17 +169,14 @@ function MineContent() {
 
               {/* Mining area */}
               {!aiMode ? (
-                <button
-                  onClick={handleClick}
+                <MiningButton
+                  behavior={buttonBehavior}
                   disabled={overloaded}
-                  className={`w-full py-16 border-2 text-lg transition-all select-none ${
-                    overloaded
-                      ? "border-terminal-red bg-terminal-red/10 text-terminal-red cursor-not-allowed"
-                      : "border-terminal-green text-terminal-green hover:bg-terminal-green/5 active:bg-terminal-green/20 active:scale-[0.98]"
-                  }`}
-                >
-                  {overloaded ? "⚠ OVERLOAD — COOLING DOWN" : "▣ MINE"}
-                </button>
+                  onClick={handleClick}
+                  label="▣ MINE"
+                  overloadedLabel="⚠ OVERLOAD — COOLING DOWN"
+                  overloaded={overloaded}
+                />
               ) : (
                 <div className="w-full py-16 border-2 border-terminal-green/30 bg-terminal-green/5 text-center">
                   <div className="text-terminal-green text-sm animate-pulse">
@@ -178,6 +185,16 @@ function MineContent() {
                   <div className="text-terminal-dim text-xs mt-2">
                     Automated mode — no manual input required
                   </div>
+                </div>
+              )}
+
+              {/* v4: tier-aware penalty hint (subtle, just below button) */}
+              {!aiMode && buttonBehavior !== "normal" && (
+                <div className="text-[10px] text-terminal-dim text-center">
+                  Optimization profile {store.userRatingTier} ·{" "}
+                  {buttonBehavior === "delay"
+                    ? "response latency adjusted"
+                    : "manual stability low"}
                 </div>
               )}
 
