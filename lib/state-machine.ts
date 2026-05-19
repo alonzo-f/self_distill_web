@@ -32,7 +32,7 @@ export const PHASE_TO_ROUTE: Record<UserPhase, string> = {
   CALIBRATED: "/task",
   EXPRESSED: "/distill",
   DISTILLED_VIEWED: "/benchmark",
-  BENCHMARKED: "/hub",
+  BENCHMARKED: "/verdict",   // BENCHMARKED → 看 verdict 揭示 → HUB_UNLOCKED
   HUB_UNLOCKED: "/hub",
   GHOST: "/ghost",
   BACKDOOR_FOUND: "/hub",
@@ -40,8 +40,18 @@ export const PHASE_TO_ROUTE: Record<UserPhase, string> = {
 
 /**
  * The ordered list of route paths that map to each linear phase.
- * Used by the middleware to detect "already completed" pages and
+ * Used by the route guard to detect "already completed" pages and
  * apply read-only mode.
+ *
+ * Indices intentionally line up with PHASE_ORDER:
+ *   0 UNREGISTERED      → /
+ *   1 PSA_VIEWED        → /register
+ *   2 REGISTERED        → /calibrate
+ *   3 CALIBRATED        → /task
+ *   4 EXPRESSED         → /distill
+ *   5 DISTILLED_VIEWED  → /benchmark
+ *   6 BENCHMARKED       → /verdict
+ *   7 HUB_UNLOCKED      → /hub
  */
 export const ROUTE_ORDER: string[] = [
   "/",
@@ -50,8 +60,15 @@ export const ROUTE_ORDER: string[] = [
   "/task",
   "/distill",
   "/benchmark",
+  "/verdict",
   "/hub",
 ];
+
+/** Pages that should be guarded by the linear state machine. */
+export const LINEAR_ROUTES = new Set(ROUTE_ORDER);
+
+/** Pages reachable freely once Hub is unlocked (post-main-line). */
+export const FREE_ROUTES = new Set(["/mine", "/leisure", "/wall", "/operate", "/backdoor"]);
 
 /**
  * Stage timeout caps (in milliseconds) — protect against users

@@ -5,8 +5,23 @@ import { useRouter } from "next/navigation";
 import { TerminalWindow, SystemMessage, Timer } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
 import { CALIBRATION_QUESTIONS } from "@/lib/data/calibration-questions";
+import { RouteGuard } from "@/components/RouteGuard";
+import {
+  loadSession,
+  saveSession,
+  advancePhase,
+  setSnapshot,
+} from "@/lib/local-storage";
 
 export default function CalibratePage() {
+  return (
+    <RouteGuard>
+      <CalibrateContent />
+    </RouteGuard>
+  );
+}
+
+function CalibrateContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -27,6 +42,14 @@ export default function CalibratePage() {
   const advanceQuestion = useCallback(() => {
     if (isLastQuestion) {
       store.setStatus("CALIBRATING");
+      // v4: persist phase + snapshot before navigating
+      const persisted = loadSession();
+      if (persisted) {
+        let next = advancePhase(persisted, "CALIBRATED");
+        next = setSnapshot(next, "calibration", [...store.calibrationAnswers]);
+        saveSession(next);
+      }
+      store.setPhase("CALIBRATED");
       router.push("/task");
       return;
     }

@@ -19,8 +19,23 @@ import {
   WORD_LIMIT_MAX,
 } from "@/lib/data/expression-prompts";
 import type { ExpressionPrompt } from "@/types";
+import { RouteGuard } from "@/components/RouteGuard";
+import {
+  loadSession,
+  saveSession,
+  advancePhase,
+  setSnapshot,
+} from "@/lib/local-storage";
 
 export default function TaskPage() {
+  return (
+    <RouteGuard>
+      <TaskContent />
+    </RouteGuard>
+  );
+}
+
+function TaskContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const tracker = useTypingTracker();
@@ -85,9 +100,24 @@ export default function TaskPage() {
       status: "EXPRESSING",
     });
 
+    // v4: persist phase + immutable snapshot before navigating
+    const metrics = tracker.getMetrics();
+    const persisted = loadSession();
+    if (persisted) {
+      let next = advancePhase(persisted, "EXPRESSED");
+      next = setSnapshot(next, "expression", {
+        promptKey: prompt.key,
+        promptText: prompt.text,
+        userInput: text,
+        metrics,
+      });
+      saveSession(next);
+    }
+    store.setPhase("EXPRESSED");
+
     // Navigate to distill with a brief delay
     setTimeout(() => router.push("/distill"), 800);
-  }, [text, submitted, store, router, prompt]);
+  }, [text, submitted, store, router, prompt, tracker]);
 
   const handleTimeUp = useCallback(() => {
     if (submitted) return;

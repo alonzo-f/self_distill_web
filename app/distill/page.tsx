@@ -8,6 +8,13 @@ import {
   ProgressBar,
 } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
+import { RouteGuard } from "@/components/RouteGuard";
+import {
+  loadSession,
+  saveSession,
+  advancePhase,
+  setSnapshot,
+} from "@/lib/local-storage";
 
 type Phase = "processing" | "reveal" | "comparison";
 
@@ -20,6 +27,14 @@ const PROCESSING_STEPS = [
 ];
 
 export default function DistillPage() {
+  return (
+    <RouteGuard>
+      <DistillContent />
+    </RouteGuard>
+  );
+}
+
+function DistillContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const [phase, setPhase] = useState<Phase>("processing");
@@ -232,7 +247,21 @@ export default function DistillPage() {
             </div>
 
             <button
-              onClick={() => router.push("/benchmark")}
+              onClick={() => {
+                // v4: persist DISTILLED_VIEWED phase + snapshot before navigating
+                const persisted = loadSession();
+                if (persisted) {
+                  let next = advancePhase(persisted, "DISTILLED_VIEWED");
+                  if (store.distilledText) {
+                    next = setSnapshot(next, "distillation", {
+                      distilledText: store.distilledText,
+                    });
+                  }
+                  saveSession(next);
+                }
+                store.setPhase("DISTILLED_VIEWED");
+                router.push("/benchmark");
+              }}
               className="w-full border border-terminal-green text-terminal-green px-4 py-3 text-sm hover:bg-terminal-green/10 transition-colors"
             >
               Proceed to Evaluation →

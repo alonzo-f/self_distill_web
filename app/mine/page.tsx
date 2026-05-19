@@ -5,8 +5,19 @@ import { useRouter } from "next/navigation";
 import { TerminalWindow, SystemMessage, ProgressBar } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
 import { scoresToMiningParams } from "@/lib/score-transform";
+import { RouteGuard } from "@/components/RouteGuard";
+import { HubButton } from "@/components/HubButton";
 
 export default function MinePage() {
+  return (
+    <RouteGuard>
+      <HubButton />
+      <MineContent />
+    </RouteGuard>
+  );
+}
+
+function MineContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const [output, setOutput] = useState(0);

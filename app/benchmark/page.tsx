@@ -7,10 +7,25 @@ import { useParticipantStore } from "@/stores/participant-store";
 import { useTypingTracker } from "@/stores/typing-tracker";
 import { mockBenchmark } from "@/lib/ai/mock";
 import type { BenchmarkScores } from "@/types";
+import { RouteGuard } from "@/components/RouteGuard";
+import {
+  loadSession,
+  saveSession,
+  advancePhase,
+  setSnapshot,
+} from "@/lib/local-storage";
 
 type Phase = "rate_ai" | "processing" | "ai_rates_you";
 
 export default function BenchmarkPage() {
+  return (
+    <RouteGuard>
+      <BenchmarkContent />
+    </RouteGuard>
+  );
+}
+
+function BenchmarkContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const tracker = useTypingTracker();
@@ -183,7 +198,24 @@ export default function BenchmarkPage() {
               />
             </TerminalWindow>
             <button
-              onClick={() => router.push("/verdict")}
+              onClick={() => {
+                // v4: persist BENCHMARKED phase + minimal benchmark snapshot.
+                // The five-tier rating game (Phase 4) will replace this with
+                // proper tier-aware persistence.
+                const persisted = loadSession();
+                if (persisted && scores) {
+                  let next = advancePhase(persisted, "BENCHMARKED");
+                  next = setSnapshot(next, "benchmark", {
+                    rating: userRating,
+                    tier: userRating === 10 ? "10" : userRating >= 8 ? "8-9" : userRating >= 6 ? "6-7" : userRating >= 4 ? "4-5" : "1-3",
+                    scores,
+                    retried: false,
+                  });
+                  saveSession(next);
+                }
+                store.setPhase("BENCHMARKED");
+                router.push("/verdict");
+              }}
               className="w-full border border-terminal-amber text-terminal-amber px-4 py-3 text-sm hover:bg-terminal-amber/10 transition-colors"
             >
               View Verdict →

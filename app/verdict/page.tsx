@@ -11,10 +11,20 @@ import {
 } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
 import { determineVerdict } from "@/lib/score-transform";
+import { RouteGuard } from "@/components/RouteGuard";
+import { loadSession, saveSession, advancePhase } from "@/lib/local-storage";
 
 type Phase = "analyzing" | "reveal";
 
 export default function VerdictPage() {
+  return (
+    <RouteGuard>
+      <VerdictContent />
+    </RouteGuard>
+  );
+}
+
+function VerdictContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const [phase, setPhase] = useState<Phase>("analyzing");
@@ -159,10 +169,20 @@ export default function VerdictPage() {
             </TerminalWindow>
 
             <button
-              onClick={() => router.push("/mine")}
+              onClick={() => {
+                // v4: viewing verdict completes the main line.
+                // Advance phase to HUB_UNLOCKED and send the user to /hub
+                // so they can choose their next destination freely.
+                const persisted = loadSession();
+                if (persisted) {
+                  saveSession(advancePhase(persisted, "HUB_UNLOCKED"));
+                }
+                store.setPhase("HUB_UNLOCKED");
+                router.push("/hub");
+              }}
               className="w-full border border-terminal-green text-terminal-green px-4 py-3 text-sm hover:bg-terminal-green/10 transition-colors"
             >
-              Enter Production System →
+              Enter Hub →
             </button>
           </div>
         )}

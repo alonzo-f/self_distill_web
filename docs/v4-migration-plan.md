@@ -86,7 +86,7 @@
 | 0 | 数据模型 + 状态机基础 | ✅ | P0 | 1.5 d | 无 |
 | 1 | PSA 入场 + 注册改造（含昵称） | ✅ | P0 | 1.5 d | 0 |
 | 2 | HR 题库 + 1-50 词限制 | ✅ | P0 | 0.5 d | 0 |
-| 3 | Hub 主页 + 路由守卫 + Exit/重入规则 | ⬜ | P0 | 2.5 d | 0, 1, 2 |
+| 3 | Hub 主页 + 路由守卫 + Exit/重入规则 | ✅ | P0 | 2.5 d | 0, 1, 2 |
 | 4 | 五档评分博弈 + 警告页 | ⬜ | P0 | 1 d | 0 |
 | 5 | 挖矿物理惩罚（延迟 + 飘移） | ⬜ | P0 | 0.5 d | 4 |
 | 6 | 休闲三游戏 + credit=点击数 + 负分淘汰 | ⬜ | P0 | 2 d | 0, 4, 5 |
@@ -350,7 +350,14 @@ export const EXPRESSION_PROMPTS: ExpressionPrompt[] = [
 
 ---
 
-### 阶段 3：Hub 主页 + 路由守卫 + Exit/重入规则  ⬜  P0  2.5d
+### 阶段 3：Hub 主页 + 路由守卫 + Exit/重入规则  ✅  P0  2.5d  （完成于 2026-05-20）
+
+**实现笔记**（实施差异）：
+- 采用**客户端 RouteGuard 组件** 而非 `middleware.ts`。理由：localStorage 已是客户端身份的权威来源，避免 cookie 同步复杂度；且交互装置无 SEO 顾虑，允许短暂"Verifying session..." 状态
+- `/verdict` 已正式纳入 `ROUTE_ORDER`（BENCHMARKED → /verdict → HUB_UNLOCKED）
+- /verdict 的 Continue 按钮现在送往 `/hub`（不再直接到 `/mine`），由 Hub 自身推荐下一步
+- ReadOnlyOverlay 渲染**每个阶段的具体 snapshot 卡片**（calibration/expression/distillation/benchmark/verdict）；snapshot 在各页面 submit 时写入 localStorage 且不可覆盖
+- `/api/participants/[id]` DELETE 拒绝删除 `is_permanent=true` 的 Builder 记录
 
 **目标：** 这是 v4 最复杂的阶段。实现完整的状态机驱动路由 + 重入只读重走 + Exit 数据保留规则。
 
@@ -982,7 +989,7 @@ interface GraveyardEntry {
 阶段 0   ✅  数据模型 + 状态机基础                    (2026-05-20)
 阶段 1   ✅  PSA 入场 + 注册改造 (含昵称)              (2026-05-20)
 阶段 2   ✅  HR 题库 + 1-50 词限制                      (2026-05-20)
-阶段 3   ⬜  Hub 主页 + 路由守卫 + Exit/重入
+阶段 3   ✅  Hub 主页 + 路由守卫 + Exit/重入            (2026-05-20)
 阶段 4   ⬜  五档评分博弈
 阶段 5   ⬜  挖矿物理惩罚
 阶段 6   ⬜  休闲三游戏 + 负分淘汰
@@ -1004,3 +1011,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 0 完成：新建 `202605200001_v4_schema_changes.sql`（新增 9 字段 + backdoor_attacks 表 + 索引 + RLS + Builder seed）；扩充 `types/index.ts`（UserPhase / RatingTier / LeisureGame / BackdoorAttackType）；重写 `lib/participants/types.ts`（WallParticipant + GraveyardEntry）；新建 `lib/state-machine.ts`（PHASE_ORDER / classifyRoute / canStartOver / STAGE_TIMEOUTS_MS）+ `lib/local-storage.ts`（PersistedSession + 不可变 setSnapshot）；扩充 `stores/participant-store.ts`（v4 字段 + setPhase / setRatingTier / spendAttackToken / archive）；同步 `lib/participants/repository.ts` 至 v4 字段。`tsc --noEmit` + `eslint` 通过；本地 migration up 成功，验证 BUILDER_01/02 seed 已写入且 `is_permanent=true / phase=BACKDOOR_FOUND` | Claude / Y90133 |
 | 2026-05-20 | 阶段 1 完成：新建 `components/PSAPlayer.tsx`（自动播放 / 60s 硬超时 / 5s 后显示 Skip / 视频缺失时退化为四场景文本占位）；重写 `app/page.tsx`（仅 PSA + localStorage 重入守卫，已 PSA_VIEWED 用户自动跳到正确路由）；新建 `app/register/page.tsx`（拍照 + 昵称 input + GDPR 单独清晰同意 + 可选 phone_last4 + 滚动 dark pattern ToS + 完成后写入 persisted session 与 Zustand）。修复 React 19 hooks 严格规则（set-state-in-effect + ref-during-render）。`tsc --noEmit` + `eslint` 通过 | Claude / Y90133 |
 | 2026-05-20 | 阶段 2 完成：重写 `lib/data/expression-prompts.ts` 为 10 题 HR 面试题题库 + 导出 `WORD_LIMIT_MIN/MAX` 与 `countWords()`；修改 `app/task/page.tsx` 应用 1-50 词硬限制（超 50 拒绝输入并红色 flash / 不足 1 词禁用 Submit / 120s 超时时若仍 <1 词不强制提交，等 Phase 3 路由守卫接管）；同时把 `promptKey + promptText` 写入 Zustand，让 `/distill` 与 `/benchmark` 不再使用 `"expression task"` 硬编码占位，而是把真实 HR 题文本传给 AI。`tsc --noEmit` + `eslint` 通过 | Claude / Y90133 |
+| 2026-05-20 | 阶段 3 完成：状态机扩展（`/verdict` 纳入 `ROUTE_ORDER`，BENCHMARKED → `/verdict`；新增 `FREE_ROUTES`）；新建 `lib/exit-handler.ts`（`exitToHub` / `startOver`）；新建 `app/api/participants/[id]/route.ts` DELETE 端点（守 `is_permanent` 不可删）；新建 `components/RouteGuard.tsx`（客户端路由守卫，allow/redirect/readOnly 三态）；新建 `components/ReadOnlyOverlay.tsx`（per-stage snapshot 卡片 + Continue 推进）；新建 `components/HubButton.tsx`（[← Hub]，仅 Hub 解锁后显示）；新建 `app/hub/page.tsx`（identity + credits + engagement + recommended + explore grid + Exit 双步 dark pattern + Start Over GDPR 硬删除）；接入 `/calibrate /task /distill /benchmark /verdict /mine /leisure` 至 RouteGuard，各页 submit 时写 phase + immutable snapshot 进 localStorage；verdict 完成后送往 `/hub` 而非 `/mine`。`npx next build` 全部 17 路由编译通过，`tsc --noEmit` + `eslint` 全绿 | Claude / Y90133 |

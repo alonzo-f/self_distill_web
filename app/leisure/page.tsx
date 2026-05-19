@@ -2,10 +2,21 @@
 
 import { useState, useCallback } from "react";
 import { useParticipantStore } from "@/stores/participant-store";
+import { RouteGuard } from "@/components/RouteGuard";
+import { HubButton } from "@/components/HubButton";
 
 type GambleResult = { won: boolean; amount: number } | null;
 
 export default function LeisurePage() {
+  return (
+    <RouteGuard>
+      <HubButton />
+      <LeisureContent />
+    </RouteGuard>
+  );
+}
+
+function LeisureContent() {
   const store = useParticipantStore();
   const [lastResult, setLastResult] = useState<GambleResult>(null);
   const [showBackend, setShowBackend] = useState(false);
