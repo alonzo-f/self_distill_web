@@ -27,7 +27,16 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-terminal-bg text-terminal-text font-mono scanline-overlay">
+      {/*
+        suppressHydrationWarning: needed because browser extensions
+        (e.g. mpa analytics, dark-reader, language tools) inject
+        attributes on <body> *before* React hydrates. Only the body's
+        own attributes are silenced — children remain fully diffed.
+      */}
+      <body
+        suppressHydrationWarning
+        className="min-h-full bg-terminal-bg text-terminal-text font-mono scanline-overlay"
+      >
         <main className="min-h-screen">{children}</main>
       </body>
     </html>
