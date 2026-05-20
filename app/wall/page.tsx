@@ -104,6 +104,61 @@ export default function WallPage() {
     setAnnouncements((list) => [a, ...list].slice(0, 12));
   }, []);
 
+  // Subscribe to wall:events channel for backdoor_attack + operator_action
+  // payloads emitted by the new broadcast triggers in 202605200002 migration.
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel("wall:events")
+      .on("broadcast", { event: "backdoor_attack" }, (msg) => {
+        const p = (msg.payload ?? {}) as {
+          attacker_display_id?: string;
+          target_display_id?: string;
+          action_type?: string;
+          amount?: number;
+        };
+        const verb =
+          p.action_type === "SIPHON"
+            ? "siphoned"
+            : p.action_type === "CORRUPT"
+              ? "corrupted"
+              : p.action_type === "SWAP"
+                ? "swapped with"
+                : "attacked";
+        const text =
+          p.action_type === "SIPHON" && p.amount
+            ? `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.amount} credits from ${p.target_display_id ?? "?"}`
+            : `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.target_display_id ?? "?"}`;
+        pushAnnouncement({
+          id: `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          kind: "backdoor_attack",
+          text,
+          at: Date.now(),
+        });
+      })
+      .on("broadcast", { event: "operator_action" }, (msg) => {
+        const p = (msg.payload ?? {}) as {
+          source_display_id?: string;
+          target_display_id?: string;
+          action_type?: string;
+        };
+        const verb = (p.action_type ?? "ACTED").toLowerCase();
+        pushAnnouncement({
+          id: `op-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          kind: "flag",
+          text: `${p.source_display_id ?? "?"} ${verb} ${p.target_display_id ?? "?"}`,
+          at: Date.now(),
+        });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [pushAnnouncement]);
+
   const onlineCount = participants.filter(
     (p) => !p.isPermanent && p.status !== "ARCHIVED",
   ).length;
