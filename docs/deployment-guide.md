@@ -87,10 +87,10 @@ Project Settings → Environment Variables，**逐条填以下**：
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 生产 anon key | 同上 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 生产 service role key | 同上 |
 | `AI_API_KEY` | OpenAI key（可选，留空则 mock） | |
-| `RESEND_API_KEY` | `re_6NsoGKco_Mtz4QFh8Qcq3sYowFtJimDGM` | 你的 Resend key |
+| `RESEND_API_KEY` | `re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` | 你的 Resend key |
 | `EMAIL_FROM` | `onboarding@resend.dev` | 无域名时的发件人 |
 | `SITE_ORIGIN` | `https://self-distill.vercel.app` | 实际部署后的 URL |
-| `CRON_SECRET` | `11ebddcc41687563d4d16d93725f599fa3e144ed3c6dcf236d72e0f585a67bfe` | 已生成的随机串 |
+| `CRON_SECRET` | `&lt;your-generated-random-secret-here&gt;` | 已生成的随机串 |
 
 配完后 Project → Deployments → 最新 deployment 右上 `Redeploy`。
 
@@ -140,10 +140,10 @@ AI_MODEL=gpt-4o-mini
 AI_API_KEY=sk-...
 
 # Email + Cron
-RESEND_API_KEY=re_6NsoGKco_Mtz4QFh8Qcq3sYowFtJimDGM
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 EMAIL_FROM=onboarding@resend.dev
 SITE_ORIGIN=https://self-distill.vercel.app
-CRON_SECRET=11ebddcc41687563d4d16d93725f599fa3e144ed3c6dcf236d72e0f585a67bfe
+CRON_SECRET=&lt;your-generated-random-secret-here&gt;
 ```
 
 ---
