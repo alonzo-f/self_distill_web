@@ -53,7 +53,7 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
     isOperator: Boolean(row.is_operator),
     joinedAt: toIsoMillis(row.joined_at as string | null | undefined),
     lastSeenAt: toIsoMillis(row.last_seen_at as string | null | undefined),
-    photoUrl: row.photo_url ? String(row.photo_url) : null,
+    photoUrl: rewritePhotoUrl(row.photo_url, String(row.id)),
     scores,
     // v4 additions (optional in WallParticipant)
     userRatingTier: (row.user_rating_tier as WallParticipant["userRatingTier"]) ?? null,
@@ -79,6 +79,23 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
   };
 }
 
+/**
+ * Rewrite legacy DB photo URLs to the same-origin proxy path.
+ * - http://127.0.0.1:54321/storage/v1/object/public/... → /api/photo/<id>
+ * - Any other /storage/v1/... URL also gets rewritten (LAN/prod variant)
+ * - data: URLs are returned as-is (used during the brief moment between
+ *   capture and upload completion)
+ * - Already-proxy paths and null pass through
+ */
+function rewritePhotoUrl(raw: unknown, participantId: string): string | null {
+  if (!raw) return null;
+  const url = String(raw);
+  if (url.startsWith("/api/photo/")) return url;
+  if (url.startsWith("data:")) return url;
+  if (url.includes("/storage/v1/")) return `/api/photo/${participantId}`;
+  return url;
+}
+
 function dataUrlToFile(dataUrl: string) {
   const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
   if (!match) return null;
@@ -90,8 +107,24 @@ function dataUrlToFile(dataUrl: string) {
 }
 
 async function uploadPhoto(participantId: string, photoUrl: string | null | undefined) {
-  if (!photoUrl?.startsWith("data:")) return photoUrl ?? null;
+  // v4: We always return the SAME-ORIGIN proxy path /api/photo/<id>.
+  // Reasons (see app/api/photo/[participantId]/route.ts):
+  //   - Supabase Storage public URLs leak the host (127.0.0.1 in local dev,
+  //     unreachable from mobile LAN devices).
+  //   - HTTPS pages can't load HTTP images (iOS Safari blocks mixed content).
+  // The proxy fetches bytes server-side and serves them with the correct
+  // content-type, fully same-origin HTTPS.
+  if (!photoUrl) return null;
 
+  // Legacy / external URL → just rewrite to proxy path. The proxy will look
+  // up the file in Supabase Storage by participant id.
+  if (!photoUrl.startsWith("data:")) {
+    if (photoUrl.startsWith("/api/photo/")) return photoUrl;
+    if (photoUrl.includes("/storage/v1/")) return `/api/photo/${participantId}`;
+    return photoUrl;
+  }
+
+  // data URL — upload to Storage then return proxy path
   const supabase = getSupabaseAdminClient();
   const file = dataUrlToFile(photoUrl);
   if (!supabase || !file) return photoUrl;
@@ -106,11 +139,11 @@ async function uploadPhoto(participantId: string, photoUrl: string | null | unde
 
   if (error) {
     console.error("Supabase photo upload failed:", error);
+    // Fall back to inline data URL so something still renders
     return photoUrl;
   }
 
-  const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return `/api/photo/${participantId}`;
 }
 
 export async function listParticipants() {
