@@ -22,7 +22,10 @@ import {
 import { useParticipantStore } from "@/stores/participant-store";
 import type { WallParticipant } from "@/lib/participants/types";
 import { QuadrantA_AtRisk } from "@/components/wall/QuadrantA_AtRisk";
-import { QuadrantB_Particles } from "@/components/wall/QuadrantB_Particles";
+import {
+  QuadrantB_Particles,
+  type AttackEvent,
+} from "@/components/wall/QuadrantB_Particles";
 import {
   QuadrantC_Announcements,
   type Announcement,
@@ -31,6 +34,7 @@ import { QuadrantD_Graveyard } from "@/components/wall/QuadrantD_Graveyard";
 
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
 const ANNOUNCEMENT_TTL_MS = 8_000;
+const ATTACK_OVERLAY_TTL_MS = 1_400; // matches QuadrantB attack-beam keyframes
 
 export default function WallPage() {
   const participant = useParticipantStore();
@@ -42,6 +46,7 @@ export default function WallPage() {
     () => (isBrowserSupabaseConfigured() ? "connecting" : "fallback"),
   );
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [activeAttacks, setActiveAttacks] = useState<AttackEvent[]>([]);
 
   // Top-bar clock
   useEffect(() => {
@@ -104,6 +109,14 @@ export default function WallPage() {
     setAnnouncements((list) => [a, ...list].slice(0, 12));
   }, []);
 
+  /** Push an in-flight attack overlay; auto-expires after ATTACK_OVERLAY_TTL_MS. */
+  const pushAttackEvent = useCallback((evt: AttackEvent) => {
+    setActiveAttacks((list) => [...list, evt]);
+    window.setTimeout(() => {
+      setActiveAttacks((list) => list.filter((e) => e.id !== evt.id));
+    }, ATTACK_OVERLAY_TTL_MS);
+  }, []);
+
   // Subscribe to wall:events channel for backdoor_attack + operator_action
   // payloads emitted by the new broadcast triggers in 202605200002 migration.
   useEffect(() => {
@@ -131,12 +144,22 @@ export default function WallPage() {
           p.action_type === "SIPHON" && p.amount
             ? `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.amount} credits from ${p.target_display_id ?? "?"}`
             : `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.target_display_id ?? "?"}`;
+        const evtId = `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         pushAnnouncement({
-          id: `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: evtId,
           kind: "backdoor_attack",
           text,
           at: Date.now(),
         });
+        if (p.attacker_display_id && p.target_display_id) {
+          pushAttackEvent({
+            id: evtId,
+            sourceDisplayId: p.attacker_display_id,
+            targetDisplayId: p.target_display_id,
+            kind: "backdoor",
+            at: Date.now(),
+          });
+        }
       })
       .on("broadcast", { event: "operator_action" }, (msg) => {
         const p = (msg.payload ?? {}) as {
@@ -145,19 +168,29 @@ export default function WallPage() {
           action_type?: string;
         };
         const verb = (p.action_type ?? "ACTED").toLowerCase();
+        const evtId = `op-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         pushAnnouncement({
-          id: `op-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: evtId,
           kind: "flag",
           text: `${p.source_display_id ?? "?"} ${verb} ${p.target_display_id ?? "?"}`,
           at: Date.now(),
         });
+        if (p.source_display_id && p.target_display_id) {
+          pushAttackEvent({
+            id: evtId,
+            sourceDisplayId: p.source_display_id,
+            targetDisplayId: p.target_display_id,
+            kind: "operator",
+            at: Date.now(),
+          });
+        }
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [pushAnnouncement]);
+  }, [pushAnnouncement, pushAttackEvent]);
 
   const onlineCount = participants.filter(
     (p) => !p.isPermanent && p.status !== "ARCHIVED",
@@ -194,6 +227,7 @@ export default function WallPage() {
           <QuadrantB_Particles
             participants={participants}
             currentUserDisplayId={participant.displayId || undefined}
+            activeAttacks={activeAttacks}
           />
         </div>
         {/* A (top-right) */}
