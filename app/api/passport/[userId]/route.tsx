@@ -73,8 +73,8 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
             letterSpacing: 6,
           }}
         >
-          <div>SELF · DISTILL</div>
-          <div>EXPRESSION OPTIMIZATION PASSPORT</div>
+          <div style={{ display: "flex" }}>SELF · DISTILL</div>
+          <div style={{ display: "flex" }}>EXPRESSION OPTIMIZATION PASSPORT</div>
         </div>
 
         <div style={{ height: 2, background: "#222", marginTop: 16, marginBottom: 24, display: "flex" }} />
@@ -107,12 +107,17 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ color: GREEN, fontSize: 56, fontWeight: 700 }}>{row.displayId}</div>
+            <div style={{ display: "flex", color: GREEN, fontSize: 56, fontWeight: 700 }}>
+              {row.displayId}
+            </div>
             {row.displayName && (
-              <div style={{ color: DIM, fontSize: 28 }}>@{row.displayName}</div>
+              <div style={{ display: "flex", color: DIM, fontSize: 28 }}>
+                {`@${row.displayName}`}
+              </div>
             )}
             <div
               style={{
+                display: "flex",
                 color: row.verdict === "DISTILLED" ? GREEN : AMBER,
                 fontSize: 24,
                 letterSpacing: 4,
@@ -165,10 +170,10 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
             letterSpacing: 3,
           }}
         >
-          <div>
-            HASH {hash} · OUTPUT {row.output} · TIER {row.userRatingTier ?? "—"}
+          <div style={{ display: "flex" }}>
+            {`HASH ${hash} · OUTPUT ${row.output} · TIER ${row.userRatingTier ?? "—"}`}
           </div>
-          <div>You found the backdoor.</div>
+          <div style={{ display: "flex" }}>You found the backdoor.</div>
         </div>
         <div
           style={{
@@ -199,9 +204,11 @@ function ScoreCell({ label, value }: { label: string; value: number | null }) {
         padding: 16,
       }}
     >
-      <div style={{ color: DIM, fontSize: 16, letterSpacing: 3 }}>{label}</div>
-      <div style={{ color: GREEN, fontSize: 56, fontWeight: 700 }}>
-        {value !== null ? value : "—"}
+      <div style={{ display: "flex", color: DIM, fontSize: 16, letterSpacing: 3 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", color: GREEN, fontSize: 56, fontWeight: 700 }}>
+        {value !== null ? String(value) : "—"}
       </div>
     </div>
   );
@@ -210,7 +217,9 @@ function ScoreCell({ label, value }: { label: string; value: number | null }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ color: DIM, fontSize: 16, letterSpacing: 3 }}>{title}</div>
+      <div style={{ display: "flex", color: DIM, fontSize: 16, letterSpacing: 3 }}>
+        {title}
+      </div>
       {children}
     </div>
   );
