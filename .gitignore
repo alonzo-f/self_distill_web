@@ -45,3 +45,6 @@ supabase/.branches/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# v4 Phase 11: PSA video is large media — keep out of git
+public/psa.mp4

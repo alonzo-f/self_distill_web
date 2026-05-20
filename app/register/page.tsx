@@ -36,6 +36,8 @@ export default function RegisterPage() {
   // Form state
   const [nickname, setNickname] = useState("");
   const [phoneLast4, setPhoneLast4] = useState("");
+  const [email, setEmail] = useState("");
+  const [emailConsent, setEmailConsent] = useState(false);
   const [gdprAgreed, setGdprAgreed] = useState(false);
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
@@ -146,9 +148,16 @@ export default function RegisterPage() {
   // -------- Validation --------
   const nicknameValid = NICKNAME_RE.test(nickname.trim());
   const phoneValid = phoneLast4 === "" || /^[0-9]{4}$/.test(phoneLast4);
+  const emailValid =
+    email === "" ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const wantsEmail = email.trim().length > 0;
+  // If user wrote an email they must also tick the email-consent box
+  const emailConsistent = !wantsEmail || (emailValid && emailConsent);
   const canSubmit =
     nicknameValid &&
     phoneValid &&
+    emailConsistent &&
     photoDataUrl !== null &&
     gdprAgreed &&
     termsAgreed &&
@@ -207,8 +216,21 @@ export default function RegisterPage() {
       // Local fallback — proceed even if API failed.
     }
 
+    // v4 Phase 12: enqueue the 5-message aftermath sequence if the user opted in.
+    if (wantsEmail && emailConsent) {
+      try {
+        await fetch("/api/enqueue-aftermath", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ participantId: userId, email: email.trim() }),
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+
     setStep("done");
-  }, [canSubmit, displayId, nickname, phoneLast4, photoDataUrl, store]);
+  }, [canSubmit, displayId, nickname, phoneLast4, photoDataUrl, store, email, emailConsent, wantsEmail]);
 
   // -------- Render --------
   if (step === "done") {
@@ -369,10 +391,43 @@ export default function RegisterPage() {
               />
               <span className="text-xs text-terminal-text leading-snug">
                 I consent to public display of my photo on the projection wall
-                and to receive optional follow-up emails about my optimization
-                profile.
+                during this session.
               </span>
             </label>
+
+            {/* ───── Optional email (aftermath sequence) ───── */}
+            <div className="space-y-1 border-l border-terminal-border/40 pl-2">
+              <label className="text-terminal-dim text-[10px] block">
+                Optional: email address (we will send your Digital Passport here)
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full bg-black border border-terminal-border text-terminal-text px-3 py-1.5 text-sm focus:outline-none focus:border-terminal-green"
+              />
+              {email && !emailValid && (
+                <div className="text-terminal-red text-[10px]">
+                  Please enter a valid email address.
+                </div>
+              )}
+              {wantsEmail && (
+                <label className="flex items-start gap-2 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={emailConsent}
+                    onChange={(e) => setEmailConsent(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 accent-terminal-green"
+                  />
+                  <span className="text-[11px] text-terminal-text leading-snug">
+                    I consent to receive up to 5 follow-up emails over 7 days
+                    about my optimization profile. I can unsubscribe at any time
+                    with one click.
+                  </span>
+                </label>
+              )}
+            </div>
 
             {/* ───── Optional re-entry code ───── */}
             <div className="space-y-1">

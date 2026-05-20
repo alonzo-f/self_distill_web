@@ -95,7 +95,7 @@
 | 9 | 后门体验：粒子动画 + 数字护照 + 攻击 token | ✅ | P1 | 3.5 d | 6, 8 |
 | 10 | Operator 系统完善 | ✅ | P1 | 1 d | 8 |
 | 11 | PSA 视频制作（编剧/导演 + 配音） | ⬜ | P1 | 3 d | 无（并行） |
-| 12 | 后遗症邮件 + Vercel Cron + 长尾彩蛋 | ⬜ | P2 | 1.5 d | 9 |
+| 12 | 后遗症邮件 + Vercel Cron + 长尾彩蛋 | ✅ | P2 | 1.5 d | 9 |
 
 **P0 总工期：** 13 d（程序员单人）
 **P1 总工期：** 7.5 d（含 PSA 制作 3 d 并行）
@@ -889,7 +889,15 @@ interface GraveyardEntry {
 
 ---
 
-### 阶段 12：后遗症邮件 + Vercel Cron + 长尾彩蛋  ⬜  P2  1.5d
+### 阶段 12：后遗症邮件 + Vercel Cron + 长尾彩蛋  ✅  P2  1.5d  （完成于 2026-05-20）
+
+**实现笔记**：
+- Resend SDK 改为原生 fetch（避免增加依赖）；`RESEND_API_KEY` 未设时进入 mock 模式（console.info）
+- 邮件模板 5 封：passport (+1h) / report (+6h) / silence (+24h) / final (+72h) / thanks (+7d)；thanks 故意 subject 为空（v4 doc 原文设计）
+- 注册页加入可选 email + 单独 consent 勾选；填了 email 必须勾 consent，二者强一致
+- `scheduled_messages.message_content` 现在存 AftermathKey（如 `"passport"`）而非 HTML，cron 时再 render 模板（避免烘焙）
+- `/api/unsubscribe/[participantId]` 同时支持 GET（手点）与 POST（RFC 8058 邮件客户端）
+- `vercel.json` cron 每小时 hh:00 触发；env 需补 `RESEND_API_KEY` + `EMAIL_FROM` + `SITE_ORIGIN` + `CRON_SECRET`
 
 **目标：** 体验后 7 天内 5 封渐进邮件 + 数字护照分发。
 
@@ -1031,8 +1039,8 @@ interface GraveyardEntry {
 阶段 8   ✅  投影墙 4 象限 + Builder 永久地基             (2026-05-20)
 阶段 9   ✅  后门体验 (粒子 + 护照 + 攻击 token)          (2026-05-20)
 阶段 10  ✅  Operator 系统完善                            (2026-05-20)
-阶段 11  ⬜  PSA 视频
-阶段 12  ⬜  后遗症 + 长尾彩蛋
+阶段 11  ⬜  PSA 视频  (编剧/导演主导, 待美术工时)
+阶段 12  ✅  后遗症邮件 + Vercel Cron                     (2026-05-20)
 ```
 
 ---
@@ -1053,3 +1061,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 8 完成（**P0 收官**）：新建 `app/api/graveyard/route.ts`（拉取 `is_permanent=false + archived_at IS NOT NULL` 最近 12 条 + 全部 Builder 行，返回 `GraveyardEntry[]`）；新建 4 个象限组件 `components/wall/{QuadrantA_AtRisk,QuadrantB_Particles,QuadrantC_Announcements,QuadrantD_Graveyard}.tsx`；A 板块按 `emotional_noise_score` 倒序，前 5 位常驻 + 6+ 水平 ticker（CSS transform 平移）；B 板块每位用户=照片纹理 + 8 颗确定性 hash 散布字符 + Operator/me 光环；C 板块根据 participants diff 推断 join/archive 事件，TTL 8s 自动淘汰；D 板块独立 30s polling `/api/graveyard`，BUILDER_01/02 永久金色加粗在底；重写 `app/wall/page.tsx` 为 4 象限 grid，保留 v3 的 Realtime + polling fallback，删除硬编码 BUILDERS 常量。`npx next build` 通过 23 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 9 完成：新建 `components/BackdoorAnimation.tsx`（4s 时间线：照片 → 6×6=36 瓦片 → 错时下落漂向 Builder 底座 → 文本淡入）；新建 `app/backdoor/page.tsx`（动画播放 → 写 phase=BACKDOOR_FOUND + 3 attack tokens → 留名地基表单 → [Download Passport] / [Use Attack Tokens] / [Back to Hub]）；新建 `app/api/backdoor/attack/route.ts`（SIPHON 转 50 credits / SWAP 交换 output / CORRUPT 仅记录；token 校验 + 拒绝攻击 `is_permanent` 行；写 `backdoor_attacks` 表）；新建 `app/backdoor/attack/page.tsx`（3 个 action 按钮 + 10s 轮询 target 列表 + Execute → 调用 API → 减 token + 反馈）；新建 `app/api/passport/[userId]/route.tsx`（next/og ImageResponse 1080×1920 PNG：照片 + 4 维分数 + 原文蒸馏对比 + tier + 8-char hash + Foundation 标识）。`npx next build` 通过 26 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 10 完成：新建 `app/api/operator/action/route.ts`（FLAG=log only / THROTTLE=target click ×0.8 / BOOST=source click ×1.2 / REPORT=target.status=LEISURE；校验 operator_eligible + 拒绝攻击 permanent；写 `operator_actions` 表）；新建 `app/operate/page.tsx`（标题 OPERATOR · MANAGEMENT PANEL；30s 倒计时面板 + 4 action 单选 + 10s 轮询 target 列表 + Execute 重置计时器 + 0s 转 revoked 状态并 DB 同步 is_operator=false）；Hub 主页新增 Operator 入口（locked 直到 operatorEligible）。投影墙公告通过现有 `wall:participants` broadcast trigger 自动触发（DB 行变更）。`npx next build` 通过 28 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 12 完成（P2 全部完成）：新建 `lib/email/resend.ts`（原生 fetch 包装 Resend REST API，无 API key 时 console mock）；`lib/email/templates.ts`（5 封模板：passport+1h / report+6h / silence+24h / final+72h / thanks+7d，thanks 故意 subject 为空；每封含一键退订链接）；`lib/email/scheduler.ts`（`enqueueAftermathSequence()` 一次写 5 行到 `scheduled_messages`，`message_content` 存模板 key 而非 HTML）；`app/api/cron/post-session/route.ts`（每小时 cron，扫描 due 行 → 批 25 → render → send → mark sent/failed；Bearer CRON_SECRET 鉴权）；`app/api/enqueue-aftermath/route.ts`（注册页提交时调用，校验 UUID + email）；`app/api/unsubscribe/[participantId]/route.ts`（GET 一键 + POST RFC 8058，取消该用户全部 status=scheduled 行）；改造 `app/register/page.tsx` 加入可选 email + 单独 consent 勾选 + 强一致校验（填 email 必须勾 consent）；GDPR 行文案拆开（公开照片同意 / 邮件同意 分离）；新增 `vercel.json`（cron 每小时 hh:00）；补 `.env.example`（RESEND_API_KEY / EMAIL_FROM / SITE_ORIGIN / CRON_SECRET）。`npx next build` 通过 30 路由（新增 3：cron/unsubscribe/enqueue-aftermath），`tsc + eslint` 全绿 | Claude / Y90133 |
