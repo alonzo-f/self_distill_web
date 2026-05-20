@@ -73,6 +73,7 @@ export default function HubPage() {
   const credits = store.miningCredits;
   const verdict = store.verdict ?? "PENDING";
   const backdoorUnlocked = store.backendUnlocked || engagement >= 100;
+  const operatorAvailable = store.operatorEligible;
 
   const options: ExploreOption[] = [
     {
@@ -88,6 +89,14 @@ export default function HubPage() {
       glyph: "▣",
       href: "/mine",
       unlocked: true,
+    },
+    {
+      key: "operate",
+      label: "Operator Panel",
+      glyph: "▲",
+      href: "/operate",
+      unlocked: operatorAvailable,
+      locked_reason: "Not eligible",
     },
     {
       key: "leisure",

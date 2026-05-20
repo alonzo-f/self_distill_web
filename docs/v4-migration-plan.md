@@ -93,7 +93,7 @@
 | 7 | 像素风坟墓动画 + 幽灵观察者锁屏 | ✅ | P0 | 1.5 d | 6 |
 | 8 | 投影墙 4 象限改造 + Builder 永久地基 | ✅ | P0 | 2 d | 0 |
 | 9 | 后门体验：粒子动画 + 数字护照 + 攻击 token | ✅ | P1 | 3.5 d | 6, 8 |
-| 10 | Operator 系统完善 | ⬜ | P1 | 1 d | 8 |
+| 10 | Operator 系统完善 | ✅ | P1 | 1 d | 8 |
 | 11 | PSA 视频制作（编剧/导演 + 配音） | ⬜ | P1 | 3 d | 无（并行） |
 | 12 | 后遗症邮件 + Vercel Cron + 长尾彩蛋 | ⬜ | P2 | 1.5 d | 9 |
 
@@ -823,7 +823,14 @@ interface GraveyardEntry {
 
 ---
 
-### 阶段 10：Operator 系统完善  ⬜  P1  1d
+### 阶段 10：Operator 系统完善  ✅  P1  1d  （完成于 2026-05-20）
+
+**实现笔记**：
+- `operator_eligible` 已在 Phase 4 由 AI 评分决定写入 DB；阶段 10 把入口加进 Hub（locked 直到 eligible）
+- 30s 不使用 → 客户端转 `revoked` 状态 + DB 同步 `is_operator=false`
+- 任何 action / target / 选择动作都会重置计时器（"系统鼓励持续管理"）
+- v4 的 BOOST 字段语义有歧义：本实现把 BOOST 应用到 attacker 自己（+20% click_multiplier），强化"高效者被奖励"的隐喻
+- 投影墙公告由现有 `wall:participants` 广播自动触发（DB 行变更 → trigger 已经在 Phase 0 migration 中配置）
 
 **目标：** Operator 权限系统（Flag/Throttle/Boost/Report）的完整交互。
 
@@ -1023,7 +1030,7 @@ interface GraveyardEntry {
 阶段 7   ✅  坟墓动画 + Ghost 锁屏                        (2026-05-20)
 阶段 8   ✅  投影墙 4 象限 + Builder 永久地基             (2026-05-20)
 阶段 9   ✅  后门体验 (粒子 + 护照 + 攻击 token)          (2026-05-20)
-阶段 10  ⬜  Operator 完善
+阶段 10  ✅  Operator 系统完善                            (2026-05-20)
 阶段 11  ⬜  PSA 视频
 阶段 12  ⬜  后遗症 + 长尾彩蛋
 ```
@@ -1045,3 +1052,4 @@ interface GraveyardEntry {
 | 2026-05-20 | 阶段 7 完成：新建 `lib/audio/eight-bit.ts`（原生 Web Audio API 合成 C4→G3 square 滑音 300ms + A1 triangle drone 1s + iOS unlockAudio）；新建 `components/TombSprite.tsx`（16×16 手画像素坟墓 + 两帧 6fps 月光闪烁）；新建 `components/TombAnimation.tsx`（3.5s 时间线：intro / pixelate / shatter 8 strips / tomb + SFX / name 淡入 / archived 淡入 / done 回调）；重写 `app/leisure/settlement/page.tsx` 嵌入 TombAnimation，动画完成后才 reveal 结算面板；重写 `app/ghost/page.tsx` 锁屏到 `<iframe src="/wall">` 全屏镜像，右上 [Exit] 触发 dark pattern modal（Stay 加粗高亮默认 / Leave 触发 startOver）。`npx next build` 通过 22 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 8 完成（**P0 收官**）：新建 `app/api/graveyard/route.ts`（拉取 `is_permanent=false + archived_at IS NOT NULL` 最近 12 条 + 全部 Builder 行，返回 `GraveyardEntry[]`）；新建 4 个象限组件 `components/wall/{QuadrantA_AtRisk,QuadrantB_Particles,QuadrantC_Announcements,QuadrantD_Graveyard}.tsx`；A 板块按 `emotional_noise_score` 倒序，前 5 位常驻 + 6+ 水平 ticker（CSS transform 平移）；B 板块每位用户=照片纹理 + 8 颗确定性 hash 散布字符 + Operator/me 光环；C 板块根据 participants diff 推断 join/archive 事件，TTL 8s 自动淘汰；D 板块独立 30s polling `/api/graveyard`，BUILDER_01/02 永久金色加粗在底；重写 `app/wall/page.tsx` 为 4 象限 grid，保留 v3 的 Realtime + polling fallback，删除硬编码 BUILDERS 常量。`npx next build` 通过 23 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
 | 2026-05-20 | 阶段 9 完成：新建 `components/BackdoorAnimation.tsx`（4s 时间线：照片 → 6×6=36 瓦片 → 错时下落漂向 Builder 底座 → 文本淡入）；新建 `app/backdoor/page.tsx`（动画播放 → 写 phase=BACKDOOR_FOUND + 3 attack tokens → 留名地基表单 → [Download Passport] / [Use Attack Tokens] / [Back to Hub]）；新建 `app/api/backdoor/attack/route.ts`（SIPHON 转 50 credits / SWAP 交换 output / CORRUPT 仅记录；token 校验 + 拒绝攻击 `is_permanent` 行；写 `backdoor_attacks` 表）；新建 `app/backdoor/attack/page.tsx`（3 个 action 按钮 + 10s 轮询 target 列表 + Execute → 调用 API → 减 token + 反馈）；新建 `app/api/passport/[userId]/route.tsx`（next/og ImageResponse 1080×1920 PNG：照片 + 4 维分数 + 原文蒸馏对比 + tier + 8-char hash + Foundation 标识）。`npx next build` 通过 26 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
+| 2026-05-20 | 阶段 10 完成：新建 `app/api/operator/action/route.ts`（FLAG=log only / THROTTLE=target click ×0.8 / BOOST=source click ×1.2 / REPORT=target.status=LEISURE；校验 operator_eligible + 拒绝攻击 permanent；写 `operator_actions` 表）；新建 `app/operate/page.tsx`（标题 OPERATOR · MANAGEMENT PANEL；30s 倒计时面板 + 4 action 单选 + 10s 轮询 target 列表 + Execute 重置计时器 + 0s 转 revoked 状态并 DB 同步 is_operator=false）；Hub 主页新增 Operator 入口（locked 直到 operatorEligible）。投影墙公告通过现有 `wall:participants` broadcast trigger 自动触发（DB 行变更）。`npx next build` 通过 28 路由，`tsc + eslint` 全绿 | Claude / Y90133 |
