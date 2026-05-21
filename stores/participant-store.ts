@@ -1,7 +1,14 @@
 // v4 participant store
 // Reference: docs/v4-migration-plan.md Phase 0
 // Maps to v4 doc fields throughout III.
+//
+// v4 fix (2026-05-22): wrapped in zustand/middleware persist so that
+// runtime counters (miningCredits, leisureCredits, engagementPoints,
+// tier params, etc.) survive page reloads. Previously these lived only
+// in memory, so any refresh dropped them and the Hub/leisure gates
+// thought the user had 0 credits.
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   ParticipantStatus,
   Verdict,
@@ -125,7 +132,9 @@ const initialState = {
   calibrationAnswers: [],
 };
 
-export const useParticipantStore = create<ParticipantState>((set, get) => ({
+export const useParticipantStore = create<ParticipantState>()(
+  persist(
+    (set, get) => ({
   ...initialState,
 
   setParticipant: (data) => set((state) => ({ ...state, ...data })),
@@ -183,5 +192,18 @@ export const useParticipantStore = create<ParticipantState>((set, get) => ({
       archivedAt: Date.now(),
     }),
 
-  reset: () => set(initialState),
-}));
+      reset: () => set(initialState),
+    }),
+    {
+      name: "self-distill:zustand",
+      storage: createJSONStorage(() => localStorage),
+      // Photo Blob is non-serializable; everything else is fine.
+      partialize: (state) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { photoBlob, ...rest } = state;
+        return rest;
+      },
+      version: 1,
+    },
+  ),
+);
