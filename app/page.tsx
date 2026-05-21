@@ -66,40 +66,12 @@ export default function LandingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Brief loading view while the redirect runs.
+  // Brief loading view while the redirect runs. DebugBar lives in layout.tsx.
   return (
     <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
       <div className="text-terminal-dim text-xs font-mono animate-pulse">
         Initializing Expression Optimization Service...
       </div>
-      <DebugBar />
-    </div>
-  );
-}
-
-/**
- * Reset button kept at top-right for testing. Removed before演出.
- */
-function DebugBar() {
-  return (
-    <div
-      className="fixed top-0 left-0 right-0 z-[60] flex justify-between items-center text-[10px] font-mono text-terminal-dim/80 px-3 py-1 bg-black/40 backdrop-blur-sm pointer-events-auto"
-      style={{ paddingTop: "max(env(safe-area-inset-top), 4px)" }}
-    >
-      <span>self-distill · dev</span>
-      <button
-        onClick={() => {
-          try {
-            window.localStorage.clear();
-          } catch {
-            /* ignore */
-          }
-          window.location.reload();
-        }}
-        className="border border-terminal-amber/60 text-terminal-amber px-2 py-0.5 hover:bg-terminal-amber/10"
-      >
-        Reset Session
-      </button>
     </div>
   );
 }
