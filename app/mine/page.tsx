@@ -234,6 +234,16 @@ function MineContent() {
                 />
               </div>
 
+              {/* v4: when credits ≥ 50, surface a shortcut to Leisure */}
+              {store.miningCredits >= 50 && (
+                <button
+                  onClick={() => router.push("/leisure")}
+                  className="w-full border-2 border-terminal-amber text-terminal-amber bg-terminal-amber/10 px-4 py-2 text-xs hover:bg-terminal-amber/20 transition-colors"
+                >
+                  ☕ Leisure Zone unlocked — enter now →
+                </button>
+              )}
+
               {/* Switch to AI button */}
               {!aiMode && (
                 <button

@@ -3,7 +3,7 @@
 // v4 backdoor entry — the fusion ceremony + opt-in foundation naming.
 // Reference: docs/v4-migration-plan.md Phase 9; project_v4 III. 阶段 6.7
 //
-// Gated by engagementPoints >= 100 (Hub link is Locked otherwise).
+// Gated by leisureCredits >= 100 (Hub link is Locked otherwise).
 // Flow:
 //   1. BackdoorAnimation auto-plays (~3.5s) → photo dissolves into Builder cluster
 //   2. Hard-coded text reveal: "You found the backdoor. But the backdoor was a door..."
@@ -49,10 +49,11 @@ function BackdoorContent() {
 
   // Gate: must have >= 100 engagement
   useEffect(() => {
-    if (store.engagementPoints < 100) {
+    // v4 调整: gate 改用 leisureCredits >= 100 (与 Hub 一致)
+    if (store.leisureCredits < 100 && !store.backendUnlocked) {
       router.replace("/hub");
     }
-  }, [store.engagementPoints, router]);
+  }, [store.leisureCredits, store.backendUnlocked, router]);
 
   // On animation complete, commit BACKDOOR_FOUND + grant attack tokens
   const commitBackdoorPhase = async () => {

@@ -71,8 +71,11 @@ export default function HubPage() {
 
   const engagement = store.engagementPoints;
   const credits = store.miningCredits;
+  const leisureCredits = store.leisureCredits;
   const verdict = store.verdict ?? "PENDING";
-  const backdoorUnlocked = store.backendUnlocked || engagement >= 100;
+  // v4 调整: backdoor 解锁条件改为 leisureCredits >= 100
+  // (原来是 engagementPoints >= 100, 改为更可见的资源门槛)
+  const backdoorUnlocked = store.backendUnlocked || leisureCredits >= 100;
   const operatorAvailable = store.operatorEligible;
 
   const options: ExploreOption[] = [
@@ -115,7 +118,7 @@ export default function HubPage() {
       glyph: "🔓",
       href: "/backdoor",
       unlocked: backdoorUnlocked,
-      locked_reason: `${engagement}/100 engagement`,
+      locked_reason: `${leisureCredits}/100 leisure credits`,
     },
   ];
 
@@ -215,13 +218,22 @@ export default function HubPage() {
 
             <div className="grid grid-cols-2 gap-3 text-[11px]">
               <div className="border border-terminal-border p-2">
-                <div className="text-terminal-dim text-[9px] tracking-widest">CREDITS</div>
+                <div className="text-terminal-dim text-[9px] tracking-widest">MINING CREDITS</div>
                 <div className="text-terminal-green text-base tabular-nums">{credits}</div>
+                <div className="text-terminal-dim text-[8px] mt-0.5">
+                  {credits >= 50 ? "Leisure unlocked" : `${credits}/50 → Leisure`}
+                </div>
               </div>
               <div className="border border-terminal-border p-2">
-                <div className="text-terminal-dim text-[9px] tracking-widest">ENGAGEMENT</div>
-                <div className="text-terminal-green text-base tabular-nums">{engagement} / 100</div>
+                <div className="text-terminal-dim text-[9px] tracking-widest">LEISURE CREDITS</div>
+                <div className="text-terminal-green text-base tabular-nums">{leisureCredits}</div>
+                <div className="text-terminal-dim text-[8px] mt-0.5">
+                  {backdoorUnlocked ? "Backdoor unlocked" : `${leisureCredits}/100 → Backdoor`}
+                </div>
               </div>
+            </div>
+            <div className="text-terminal-dim/60 text-[9px] text-right">
+              engagement: {engagement}/100
             </div>
 
             {/* Recommended next */}
