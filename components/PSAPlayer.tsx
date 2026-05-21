@@ -2,14 +2,15 @@
 
 // v4 PSA video player.
 // Reference: docs/v4-migration-plan.md Phase 1; project_v4 III. 背景故事
-// - Auto-plays the 55-60s PSA on mount
-// - Auto-advances at video end OR 60s timeout
-// - [Skip ▶] button surfaces after 5s (prevents instant bail)
-// - When no /psa.mp4 exists, falls back to a styled placeholder
+// - Auto-plays the 55-60s PSA on mount (muted — required for mobile autoplay)
+// - Auto-advances at video end OR 60s timeout OR tap-to-skip
+// - [Skip ▶] button surfaces after 1.5s
+// - When no /psa.mp4 exists OR autoplay blocked, falls back to placeholder
+// - Tap anywhere on the player also triggers skip once skip is available
 
 import { useEffect, useRef, useState } from "react";
 
-const SKIP_DELAY_MS = 5_000;
+const SKIP_DELAY_MS = 1_500;
 const HARD_TIMEOUT_MS = 60_000;
 
 interface PSAPlayerProps {
@@ -21,6 +22,7 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
   const [skipVisible, setSkipVisible] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const completedRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -30,7 +32,7 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
     onComplete();
   };
 
-  // Show [Skip ▶] after 5s
+  // Show [Skip ▶] after a short delay
   useEffect(() => {
     const t = setTimeout(() => setSkipVisible(true), SKIP_DELAY_MS);
     return () => clearTimeout(t);
@@ -51,10 +53,34 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const showFallback = !videoSrc || videoFailed;
+  // Detect autoplay block so we can show the placeholder + a clear tap-cta.
+  useEffect(() => {
+    if (!videoSrc) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const tryPlay = async () => {
+      try {
+        await v.play();
+      } catch {
+        // External browser API: refused autoplay → flip state once.
+        setAutoplayBlocked(true);
+      }
+    };
+    void tryPlay();
+  }, [videoSrc]);
+
+  const showFallback = !videoSrc || videoFailed || autoplayBlocked;
+
+  // Tap anywhere on the overlay also skips once skip is available.
+  const handleStageTap = () => {
+    if (skipVisible) complete();
+  };
 
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <div
+      onClick={handleStageTap}
+      className="fixed inset-0 bg-black flex items-center justify-center z-50 cursor-pointer select-none"
+    >
       {showFallback ? (
         <PSAFallback elapsed={elapsed} />
       ) : (
@@ -63,29 +89,46 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
           src={videoSrc}
           autoPlay
           playsInline
-          muted={false}
+          // Mobile browsers require `muted` for inline autoplay. We honour it
+          // here — losing audio is the price of guaranteed start.
+          muted
           onEnded={complete}
           onError={() => setVideoFailed(true)}
-          className="max-h-screen max-w-screen object-contain"
+          className="max-h-screen max-w-screen object-contain pointer-events-none"
         />
       )}
 
       {/* Top-left meta */}
-      <div className="absolute top-3 left-4 text-terminal-dim font-mono text-[10px] tracking-widest">
+      <div className="absolute top-3 left-4 text-terminal-dim font-mono text-[10px] tracking-widest pointer-events-none">
         PSA · EXPRESSION OPTIMIZATION SERVICE
       </div>
-      <div className="absolute top-3 right-4 text-terminal-dim font-mono text-[10px]">
+      <div className="absolute top-3 right-4 text-terminal-dim font-mono text-[10px] pointer-events-none">
         {String(elapsed).padStart(2, "0")} / 60
       </div>
 
-      {/* Skip button */}
+      {/* Skip button — large, top-right of the playable area, safe-area aware */}
       {skipVisible && (
         <button
-          onClick={complete}
-          className="absolute bottom-6 right-6 border border-terminal-green/60 text-terminal-green font-mono text-xs px-4 py-2 hover:bg-terminal-green/10 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            complete();
+          }}
+          style={{
+            // iOS safe-area awareness (Safari toolbar cuts bottom-6 otherwise)
+            paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
+          }}
+          className="fixed bottom-0 left-1/2 -translate-x-1/2 mb-4 border-2 border-terminal-green bg-terminal-green/15 text-terminal-green font-mono text-base px-8 py-3 hover:bg-terminal-green/25 active:bg-terminal-green/30 transition-colors"
         >
           Skip ▶
         </button>
+      )}
+
+      {/* Bottom hint */}
+      {skipVisible && (
+        <div className="fixed left-0 right-0 text-center pointer-events-none font-mono text-[10px] text-terminal-dim/80"
+             style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.5rem)" }}>
+          tap anywhere to continue
+        </div>
       )}
     </div>
   );
@@ -102,7 +145,7 @@ function PSAFallback({ elapsed }: { elapsed: number }) {
   const active = scenes.find((s) => elapsed >= s.from && elapsed < s.to) ?? scenes[scenes.length - 1];
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center px-8 text-center bg-black">
+    <div className="w-full h-full flex flex-col items-center justify-center px-8 text-center bg-black pointer-events-none">
       <div className="text-terminal-dim text-[9px] mb-2 tracking-widest">
         [ PSA PLACEHOLDER — v4 阶段 11 将替换为成品视频 ]
       </div>
