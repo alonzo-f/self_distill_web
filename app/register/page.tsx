@@ -52,11 +52,29 @@ export default function RegisterPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const termsRef = useRef<HTMLDivElement>(null);
 
-  // Gate: must come through PSA first.
+  // Gate.
+  //
+  // v4 fix (2026-05-21): the previous version bounced back to "/" whenever
+  // localStorage was empty or stuck at UNREGISTERED. This created an
+  // infinite loop with the PSA player on browsers that block / silently
+  // fail localStorage writes (private mode, some mobile browsers). Now we
+  // SELF-HEAL: if the gate finds no session or UNREGISTERED, we just
+  // advance it to PSA_VIEWED in place. The user clearly already reached
+  // /register, so they've seen the PSA. Only redirect onward if the user
+  // has already progressed past PSA.
   useEffect(() => {
     const persisted = loadSession();
     if (!persisted || persisted.phase === "UNREGISTERED") {
-      router.replace("/");
+      // self-heal: pretend they viewed the PSA
+      const base =
+        persisted ??
+        createSession({
+          userId: crypto.randomUUID(),
+          displayId: "",
+          displayName: "",
+          phoneLast4: null,
+        });
+      saveSession(advancePhase(base, "PSA_VIEWED"));
       return;
     }
     if (persisted.phase !== "PSA_VIEWED") {
