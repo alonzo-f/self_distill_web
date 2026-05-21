@@ -34,7 +34,10 @@ import { QuadrantD_Graveyard } from "@/components/wall/QuadrantD_Graveyard";
 
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
 const ANNOUNCEMENT_TTL_MS = 8_000;
-const ATTACK_OVERLAY_TTL_MS = 1_400; // matches QuadrantB attack-beam keyframes
+// v4 (user-driven update): hold the target visible long enough for the
+// kill animation (shake 1.2s + ring pulse 0.8s + B&W transition) to play,
+// then it disappears into the graveyard.
+const ATTACK_OVERLAY_TTL_MS = 2_400;
 
 export default function WallPage() {
   const participant = useParticipantStore();
@@ -132,23 +135,16 @@ export default function WallPage() {
           action_type?: string;
           amount?: number;
         };
-        const verb =
-          p.action_type === "SIPHON"
-            ? "siphoned"
-            : p.action_type === "CORRUPT"
-              ? "corrupted"
-              : p.action_type === "SWAP"
-                ? "swapped with"
-                : "attacked";
-        const text =
-          p.action_type === "SIPHON" && p.amount
-            ? `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.amount} credits from ${p.target_display_id ?? "?"}`
-            : `${p.attacker_display_id ?? "?"} (backdoor) ${verb} ${p.target_display_id ?? "?"}`;
+        // v4 (user-driven update): every attack is now a kill.
         const evtId = `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const suffix =
+          p.action_type === "SIPHON" && p.amount
+            ? ` (siphoned ${p.amount} credits)`
+            : "";
         pushAnnouncement({
           id: evtId,
           kind: "backdoor_attack",
-          text,
+          text: `${p.attacker_display_id ?? "?"} killed ${p.target_display_id ?? "?"}${suffix}`,
           at: Date.now(),
         });
         if (p.attacker_display_id && p.target_display_id) {
@@ -167,12 +163,11 @@ export default function WallPage() {
           target_display_id?: string;
           action_type?: string;
         };
-        const verb = (p.action_type ?? "ACTED").toLowerCase();
         const evtId = `op-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         pushAnnouncement({
           id: evtId,
           kind: "flag",
-          text: `${p.source_display_id ?? "?"} ${verb} ${p.target_display_id ?? "?"}`,
+          text: `${p.source_display_id ?? "?"} eliminated ${p.target_display_id ?? "?"}`,
           at: Date.now(),
         });
         if (p.source_display_id && p.target_display_id) {

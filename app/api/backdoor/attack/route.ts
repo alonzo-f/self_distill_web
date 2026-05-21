@@ -64,25 +64,32 @@ export async function POST(req: NextRequest) {
   }
 
   const amount = body.amount ?? 50;
-  const updates: { id: string; patch: Record<string, number> }[] = [];
+  const updates: { id: string; patch: Record<string, unknown> }[] = [];
 
   if (body.actionType === "SIPHON") {
     const transfer = Math.min(amount, target.mining_credits ?? 0);
-    updates.push({
-      id: target.id,
-      patch: { mining_credits: Math.max(0, (target.mining_credits ?? 0) - transfer) },
-    });
+    // Attacker still gains the credits (narrative: "you took theirs")
     updates.push({
       id: attacker.id,
       patch: { mining_credits: (attacker.mining_credits ?? 0) + transfer },
     });
   } else if (body.actionType === "SWAP") {
+    // Attacker steals the target's output before archival
     updates.push({ id: attacker.id, patch: { output: target.output ?? 0 } });
-    updates.push({ id: target.id, patch: { output: attacker.output ?? 0 } });
   }
-  // CORRUPT: just records the row; downstream mining penalty wiring is Phase 9b.
+  // CORRUPT: no extra side effect — pure archival
 
-  // Apply updates (note: PostgREST upserts run sequentially; for v4 demo this is fine)
+  // v4 调整 (用户需求): 任何 backdoor 攻击都将 target 归档
+  // (status=ARCHIVED + phase=GHOST + archived_at), 即"击杀".
+  updates.push({
+    id: target.id,
+    patch: {
+      status: "ARCHIVED",
+      phase: "GHOST",
+      archived_at: new Date().toISOString(),
+    },
+  });
+
   for (const u of updates) {
     const { error: upErr } = await supabase
       .from("participants")

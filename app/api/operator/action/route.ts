@@ -69,18 +69,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cannot operate on permanent participant" }, { status: 403 });
   }
 
-  // Apply side effects
-  if (body.actionType === "THROTTLE") {
-    await supabase
-      .from("participants")
-      .update({
-        tier_click_multiplier: Math.max(
-          0.1,
-          Number(target.tier_click_multiplier ?? 1.0) * THROTTLE_FACTOR,
-        ),
-      })
-      .eq("id", target.id);
-  } else if (body.actionType === "BOOST") {
+  // Apply attacker-side bonuses (target always archived below)
+  if (body.actionType === "BOOST") {
     await supabase
       .from("participants")
       .update({
@@ -90,13 +80,21 @@ export async function POST(req: NextRequest) {
         ),
       })
       .eq("id", source.id);
-  } else if (body.actionType === "REPORT") {
-    await supabase
-      .from("participants")
-      .update({ status: "LEISURE" })
-      .eq("id", target.id);
   }
-  // FLAG = log-only, no DB mutation on target
+  // THROTTLE / FLAG / REPORT side effects are now subsumed by archival.
+  // THROTTLE's click multiplier penalty doesn't matter — target is archived.
+  void THROTTLE_FACTOR;
+
+  // v4 调整 (用户需求): 任何 operator 操作都将 target 归档.
+  // FLAG/THROTTLE/BOOST/REPORT 在叙事上都是"清除一个低效节点".
+  await supabase
+    .from("participants")
+    .update({
+      status: "ARCHIVED",
+      phase: "GHOST",
+      archived_at: new Date().toISOString(),
+    })
+    .eq("id", target.id);
 
   const { error: insErr } = await supabase.from("operator_actions").insert({
     source_participant_id: source.id,

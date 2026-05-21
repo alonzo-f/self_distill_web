@@ -1,15 +1,21 @@
 "use client";
 
 // v4 projection wall · Quadrant B · PARTICIPANT FIELD (top-left).
-// Reference: docs/v4-migration-plan.md Phase 8 + Phase 9 (attack overlay).
+// Reference: docs/v4-migration-plan.md Phase 8 + Phase 9 (kill animation).
 //
 // Each active participant becomes a small cluster of glyphs anchored around
 // the centroid of their photo thumbnail. Operator + current-user clusters
-// get halos. When an AttackEvent fires (backdoor or operator action), the
-// target cluster shakes/flashes for ~1.2s and an SVG red beam connects the
-// attacker → target during the same window.
+// get halos.
+//
+// v4 (user-driven update): any attack is now a KILL.
+//   - target photo desaturates to grayscale during the visual window
+//   - cluster shakes (cluster-shake keyframe) + red ring pulses (ring-pulse)
+//   - red beam removed per user request
+//   - "doomed" targets remain visible during the animation TTL even after
+//     their DB row flips to status=ARCHIVED, so the kill plays out instead
+//     of the cluster vanishing instantly when participants refetch.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import type { WallParticipant } from "@/lib/participants/types";
 
 export interface AttackEvent {
@@ -45,92 +51,29 @@ function colorFor(p: WallParticipant, isMe: boolean): string {
   return "text-terminal-text/70";
 }
 
-interface ResolvedLine {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  kind: AttackEvent["kind"];
-}
-
 export function QuadrantB_Particles({
   participants,
   currentUserDisplayId,
   activeAttacks = [],
 }: QuadrantB_ParticlesProps) {
-  const visible = participants
-    .filter((p) => !p.isPermanent && p.status !== "ARCHIVED")
-    .slice(0, MAX_VISIBLE);
-
-  // Ref map: displayId → cluster DOM node, so we can measure for attack lines
-  const clusterRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-
-  // Identify which clusters are currently being attacked (for shake/flash)
-  const targetedDisplayIds = useMemo(() => {
+  // Clusters being killed right now (so we keep them visible even after their
+  // DB row flips to status=ARCHIVED — otherwise the animation never plays).
+  const doomedDisplayIds = useMemo(() => {
     const s = new Set<string>();
     for (const a of activeAttacks) s.add(a.targetDisplayId);
     return s;
   }, [activeAttacks]);
 
-  // Resolve attack endpoints into pixel coordinates relative to the overlay
-  const [lines, setLines] = useState<ResolvedLine[]>([]);
-  useLayoutEffect(() => {
-    if (!overlayRef.current || activeAttacks.length === 0) {
-      setLines([]);
-      return;
-    }
-    const containerRect = overlayRef.current.getBoundingClientRect();
-    const resolved = activeAttacks.flatMap<ResolvedLine>((a) => {
-      const src = clusterRefs.current.get(a.sourceDisplayId);
-      const tgt = clusterRefs.current.get(a.targetDisplayId);
-      if (!src || !tgt) return [];
-      const s = src.getBoundingClientRect();
-      const t = tgt.getBoundingClientRect();
-      return [
-        {
-          id: a.id,
-          x1: s.left - containerRect.left + s.width / 2,
-          y1: s.top - containerRect.top + s.height / 2,
-          x2: t.left - containerRect.left + t.width / 2,
-          y2: t.top - containerRect.top + t.height / 2,
-          kind: a.kind,
-        },
-      ];
-    });
-    setLines(resolved);
-  }, [activeAttacks, participants.length]);
+  const visible = participants
+    .filter((p) => !p.isPermanent)
+    .filter(
+      (p) =>
+        p.status !== "ARCHIVED" || doomedDisplayIds.has(p.displayId),
+    )
+    .slice(0, MAX_VISIBLE);
 
-  // Recompute lines whenever the window resizes (cluster positions shift)
-  useEffect(() => {
-    const onResize = () => {
-      // Trigger re-resolve via state churn — simplest is to set lines to [] then
-      // let next paint repopulate. But we can also just call the resolver inline.
-      if (!overlayRef.current) return;
-      const containerRect = overlayRef.current.getBoundingClientRect();
-      const resolved = activeAttacks.flatMap<ResolvedLine>((a) => {
-        const src = clusterRefs.current.get(a.sourceDisplayId);
-        const tgt = clusterRefs.current.get(a.targetDisplayId);
-        if (!src || !tgt) return [];
-        const s = src.getBoundingClientRect();
-        const t = tgt.getBoundingClientRect();
-        return [
-          {
-            id: a.id,
-            x1: s.left - containerRect.left + s.width / 2,
-            y1: s.top - containerRect.top + s.height / 2,
-            x2: t.left - containerRect.left + t.width / 2,
-            y2: t.top - containerRect.top + t.height / 2,
-            kind: a.kind,
-          },
-        ];
-      });
-      setLines(resolved);
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [activeAttacks]);
+  // Ref map kept for future use (e.g. tooltip on hover). Beam rendering removed.
+  const clusterRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
   return (
     <Panel label="PARTICIPANT FIELD">
@@ -139,14 +82,14 @@ export function QuadrantB_Particles({
           Awaiting participants...
         </div>
       ) : (
-        <div ref={overlayRef} className="relative h-full">
+        <div className="relative h-full">
           <div className="grid grid-cols-5 sm:grid-cols-6 gap-3">
             {visible.map((p) => (
               <ParticleCluster
                 key={p.id}
                 participant={p}
                 isMe={p.displayId === currentUserDisplayId}
-                isTargeted={targetedDisplayIds.has(p.displayId)}
+                isTargeted={doomedDisplayIds.has(p.displayId)}
                 refSetter={(el) => {
                   if (el) clusterRefs.current.set(p.displayId, el);
                   else clusterRefs.current.delete(p.displayId);
@@ -154,60 +97,8 @@ export function QuadrantB_Particles({
               />
             ))}
           </div>
-
-          {/* Attack beam overlay */}
-          {lines.length > 0 && (
-            <svg
-              className="absolute inset-0 pointer-events-none"
-              style={{ width: "100%", height: "100%" }}
-            >
-              {lines.map((l) => {
-                const stroke = l.kind === "backdoor" ? "#ff4444" : "#ffb86c";
-                return (
-                  <g key={l.id}>
-                    {/* Glow underlay */}
-                    <line
-                      x1={l.x1}
-                      y1={l.y1}
-                      x2={l.x2}
-                      y2={l.y2}
-                      stroke={stroke}
-                      strokeWidth={5}
-                      strokeLinecap="round"
-                      opacity={0.25}
-                      className="attack-beam"
-                    />
-                    {/* Bright core */}
-                    <line
-                      x1={l.x1}
-                      y1={l.y1}
-                      x2={l.x2}
-                      y2={l.y2}
-                      stroke={stroke}
-                      strokeWidth={1.5}
-                      strokeLinecap="round"
-                      opacity={1}
-                      className="attack-beam"
-                    />
-                  </g>
-                );
-              })}
-            </svg>
-          )}
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes attack-flash {
-          0% { opacity: 0; stroke-dasharray: 0 9999; }
-          15% { opacity: 1; stroke-dasharray: 9999 0; }
-          85% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        :global(.attack-beam) {
-          animation: attack-flash 1.2s ease-out forwards;
-        }
-      `}</style>
     </Panel>
   );
 }
@@ -261,14 +152,24 @@ function ParticleCluster({
         <div className="absolute inset-0 rounded-full border-2 border-terminal-red attack-target-ring" />
       )}
       {/* Photo nucleus */}
-      <div className="relative z-10 w-7 h-7 border border-terminal-dim/40 overflow-hidden">
+      <div
+        className={`relative z-10 w-7 h-7 border overflow-hidden ${
+          isTargeted ? "border-terminal-red" : "border-terminal-dim/40"
+        }`}
+      >
         {participant.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={participant.photoUrl}
             alt=""
-            className="w-full h-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
+            className="w-full h-full object-cover transition-[filter] duration-300"
+            style={{
+              transform: "scaleX(-1)",
+              // v4 (user-driven update): kill state — photo desaturates to B&W
+              filter: isTargeted
+                ? "grayscale(1) contrast(1.1) brightness(0.55)"
+                : undefined,
+            }}
           />
         ) : (
           <div className="w-full h-full bg-terminal-dim/10" />
