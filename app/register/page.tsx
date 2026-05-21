@@ -1,10 +1,13 @@
 "use client";
 
-// v4 registration page — camera + nickname + GDPR consent + dark-pattern ToS.
+// v4 registration page — camera + nickname + grouped consent.
 // Reference: docs/v4-migration-plan.md Phase 1; project_v4 III. 阶段 1
 //
-// Single page that consolidates what used to be split across welcome/terms/photo.
-// All four fields must be completed before [Continue] enables.
+// v4 调整 (2026-05-22): 简化表单
+//   - 移除 email 输入 + email consent (现场观众不需要长尾邮件)
+//   - 移除 phone last4 输入 (跨设备重入暂时不做)
+//   - 两个 consent (GDPR 公开照片 / Optimization Terms) 合并到一个组,
+//     共享一个"AGREEMENTS"区块, 视觉更整洁
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -35,9 +38,6 @@ export default function RegisterPage() {
 
   // Form state
   const [nickname, setNickname] = useState("");
-  const [phoneLast4, setPhoneLast4] = useState("");
-  const [email, setEmail] = useState("");
-  const [emailConsent, setEmailConsent] = useState(false);
   const [gdprAgreed, setGdprAgreed] = useState(false);
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
@@ -52,21 +52,11 @@ export default function RegisterPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const termsRef = useRef<HTMLDivElement>(null);
 
-  // Gate.
-  //
-  // v4 fix (2026-05-21): the previous version bounced back to "/" whenever
-  // localStorage was empty or stuck at UNREGISTERED. This created an
-  // infinite loop with the PSA player on browsers that block / silently
-  // fail localStorage writes (private mode, some mobile browsers). Now we
-  // SELF-HEAL: if the gate finds no session or UNREGISTERED, we just
-  // advance it to PSA_VIEWED in place. The user clearly already reached
-  // /register, so they've seen the PSA. Only redirect onward if the user
-  // has already progressed past PSA.
+  // Gate. Self-heals: any user who reached /register has effectively passed PSA.
   useEffect(() => {
     console.info("[/register] mount; checking session");
     const persisted = loadSession();
     if (!persisted || persisted.phase === "UNREGISTERED") {
-      console.info("[/register] missing/UNREGISTERED session → self-heal to PSA_VIEWED");
       const base =
         persisted ??
         createSession({
@@ -79,17 +69,12 @@ export default function RegisterPage() {
       return;
     }
     if (persisted.phase !== "PSA_VIEWED") {
-      console.info(`[/register] phase=${persisted.phase} ahead of PSA_VIEWED → forwarding`);
       router.replace(PHASE_TO_ROUTE[persisted.phase]);
       return;
     }
-    console.info("[/register] phase=PSA_VIEWED, rendering form");
   }, [router]);
 
   // -------- Camera --------
-  // Side effect lives entirely inside the effect; getUserMedia is async so
-  // setState calls happen after the synchronous effect body finishes, which
-  // is what the react-hooks/set-state-in-effect rule actually polices.
   useEffect(() => {
     if (photoDataUrl) return; // camera no longer needed
     let stream: MediaStream | null = null;
@@ -149,7 +134,6 @@ export default function RegisterPage() {
       : null;
     setPhotoDataUrl(dataUrl);
 
-    // Stop camera tracks
     const tracks = (videoRef.current.srcObject as MediaStream)?.getTracks();
     tracks?.forEach((t) => t.stop());
   }, []);
@@ -168,17 +152,8 @@ export default function RegisterPage() {
 
   // -------- Validation --------
   const nicknameValid = NICKNAME_RE.test(nickname.trim());
-  const phoneValid = phoneLast4 === "" || /^[0-9]{4}$/.test(phoneLast4);
-  const emailValid =
-    email === "" ||
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const wantsEmail = email.trim().length > 0;
-  // If user wrote an email they must also tick the email-consent box
-  const emailConsistent = !wantsEmail || (emailValid && emailConsent);
   const canSubmit =
     nicknameValid &&
-    phoneValid &&
-    emailConsistent &&
     photoDataUrl !== null &&
     gdprAgreed &&
     termsAgreed &&
@@ -196,7 +171,7 @@ export default function RegisterPage() {
         userId,
         displayId,
         displayName: nickname.trim(),
-        phoneLast4: phoneLast4 || null,
+        phoneLast4: null,
       }),
       "REGISTERED",
     );
@@ -206,7 +181,7 @@ export default function RegisterPage() {
       id: userId,
       displayId,
       displayName: nickname.trim(),
-      phoneLast4: phoneLast4 || null,
+      phoneLast4: null,
       photoUrl: photoDataUrl,
       phase: "REGISTERED",
       status: "UNPROCESSED",
@@ -237,23 +212,10 @@ export default function RegisterPage() {
       // Local fallback — proceed even if API failed.
     }
 
-    // v4 Phase 12: enqueue the 5-message aftermath sequence if the user opted in.
-    if (wantsEmail && emailConsent) {
-      try {
-        await fetch("/api/enqueue-aftermath", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId: userId, email: email.trim() }),
-        });
-      } catch {
-        /* non-fatal */
-      }
-    }
-
     setStep("done");
-  }, [canSubmit, displayId, nickname, phoneLast4, photoDataUrl, store, email, emailConsent, wantsEmail]);
+  }, [canSubmit, displayId, nickname, photoDataUrl, store]);
 
-  // -------- Render --------
+  // -------- Render: completion screen --------
   if (step === "done") {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -304,6 +266,7 @@ export default function RegisterPage() {
     );
   }
 
+  // -------- Render: form --------
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
@@ -311,9 +274,6 @@ export default function RegisterPage() {
           <div className="space-y-4">
             <SystemMessage type="system">
               Welcome to the Expression Optimization Service.
-            </SystemMessage>
-            <SystemMessage type="info">
-              We need the following to personalize your experience.
             </SystemMessage>
 
             {/* ───── Camera ───── */}
@@ -402,95 +362,48 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* ───── GDPR Consent (clearly readable) ───── */}
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gdprAgreed}
-                onChange={(e) => setGdprAgreed(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-terminal-green"
-              />
-              <span className="text-xs text-terminal-text leading-snug">
-                I consent to public display of my photo on the projection wall
-                during this session.
-              </span>
-            </label>
-
-            {/* ───── Optional email (aftermath sequence) ───── */}
-            <div className="space-y-1 border-l border-terminal-border/40 pl-2">
-              <label className="text-terminal-dim text-[10px] block">
-                Optional: email address (we will send your Digital Passport here)
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full bg-black border border-terminal-border text-terminal-text px-3 py-1.5 text-sm focus:outline-none focus:border-terminal-green"
-              />
-              {email && !emailValid && (
-                <div className="text-terminal-red text-[10px]">
-                  Please enter a valid email address.
-                </div>
-              )}
-              {wantsEmail && (
-                <label className="flex items-start gap-2 cursor-pointer pt-1">
-                  <input
-                    type="checkbox"
-                    checked={emailConsent}
-                    onChange={(e) => setEmailConsent(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 accent-terminal-green"
-                  />
-                  <span className="text-[11px] text-terminal-text leading-snug">
-                    I consent to receive up to 5 follow-up emails over 7 days
-                    about my optimization profile. I can unsubscribe at any time
-                    with one click.
-                  </span>
-                </label>
-              )}
-            </div>
-
-            {/* ───── Optional re-entry code ───── */}
+            {/* ───── Optimization Terms scroll (dark pattern) ───── */}
             <div className="space-y-1">
-              <label className="text-terminal-dim text-[10px] block">
-                Optional: last 4 digits of your phone number (for cross-device re-entry)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={phoneLast4}
-                onChange={(e) => setPhoneLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="0000"
-                className="w-32 bg-black border border-terminal-border text-terminal-text px-3 py-1.5 text-sm tracking-widest focus:outline-none focus:border-terminal-green"
-              />
-              {phoneLast4 && !phoneValid && (
-                <div className="text-terminal-red text-[10px]">Must be exactly 4 digits.</div>
-              )}
-            </div>
-
-            {/* ───── ToS (dark pattern) ───── */}
-            <div className="space-y-2">
               <div className="text-terminal-dim text-[10px] tracking-widest">
                 ☐ OPTIMIZATION TERMS
               </div>
               <div
                 ref={termsRef}
-                className="h-24 overflow-y-auto text-terminal-dim text-[9px] leading-relaxed border border-terminal-border p-2 scroll-smooth"
+                className="h-20 overflow-y-auto text-terminal-dim text-[9px] leading-relaxed border border-terminal-border p-2 scroll-smooth"
               >
                 <pre className="whitespace-pre-wrap font-mono">{TERMS_OF_SERVICE}</pre>
               </div>
               <div className="text-terminal-dim text-[9px] italic">
                 [scrolled past in 0.3 seconds]
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
+            </div>
+
+            {/* ───── Grouped consents ───── */}
+            <div className="space-y-2 border border-terminal-border/60 p-3 bg-terminal-bg/40">
+              <div className="text-terminal-dim text-[10px] tracking-widest mb-1">
+                ☐ AGREEMENTS
+              </div>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gdprAgreed}
+                  onChange={(e) => setGdprAgreed(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-terminal-green flex-shrink-0"
+                />
+                <span className="text-[11px] text-terminal-text leading-snug">
+                  I consent to public display of my photo on the projection wall
+                  during this session.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={termsAgreed}
                   onChange={(e) => setTermsAgreed(e.target.checked)}
-                  className="w-4 h-4 accent-terminal-green"
+                  className="w-4 h-4 mt-0.5 accent-terminal-green flex-shrink-0"
                 />
-                <span className="text-[11px] text-terminal-text">
-                  I agree to the Expression Optimization Terms
+                <span className="text-[11px] text-terminal-text leading-snug">
+                  I agree to the Expression Optimization Terms.
                 </span>
               </label>
             </div>
@@ -507,11 +420,6 @@ export default function RegisterPage() {
             >
               {step === "submitting" ? "Processing..." : "Continue →"}
             </button>
-            {!canSubmit && step === "form" && (
-              <div className="text-terminal-dim text-[10px]">
-                Complete all four fields to continue.
-              </div>
-            )}
           </div>
         </TerminalWindow>
       </div>
