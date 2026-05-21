@@ -34,8 +34,40 @@ function VerdictContent() {
   const photoUrl = store.photoUrl;
   const setVerdict = store.setVerdict;
   const setStatus = store.setStatus;
+  const setScores = store.setScores;
+  const setParticipant = store.setParticipant;
   const verdict = scores ? determineVerdict(scores) : "VESSEL_PRESERVED";
   const isDistilled = verdict === "DISTILLED";
+
+  // v4 fix: on page refresh, Zustand resets and `store.scores` is null.
+  // Rehydrate from the localStorage snapshot we wrote in /benchmark; if
+  // there's no snapshot, the user truly hasn't been benchmarked — send
+  // them back to /benchmark instead of leaving the page hung on "PENDING".
+  useEffect(() => {
+    if (scores) return;
+    const persisted = loadSession();
+    const snap = persisted?.snapshots.benchmark;
+    if (snap?.scores) {
+      console.info("[/verdict] no scores in store — rehydrating from snapshot");
+      setScores(snap.scores);
+      return;
+    }
+    console.info("[/verdict] no scores & no snapshot — redirecting to /benchmark");
+    router.replace("/benchmark");
+  }, [scores, setScores, router]);
+
+  // Rehydrate photo from session too (separate, since photo is a different field)
+  useEffect(() => {
+    if (photoUrl) return;
+    const persisted = loadSession();
+    if (persisted) {
+      setParticipant({
+        id: persisted.userId,
+        displayId: persisted.displayId,
+        displayName: persisted.displayName,
+      });
+    }
+  }, [photoUrl, setParticipant]);
 
   useEffect(() => {
     if (!scores) return;
