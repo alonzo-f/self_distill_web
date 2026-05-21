@@ -63,9 +63,10 @@ export default function RegisterPage() {
   // /register, so they've seen the PSA. Only redirect onward if the user
   // has already progressed past PSA.
   useEffect(() => {
+    console.info("[/register] mount; checking session");
     const persisted = loadSession();
     if (!persisted || persisted.phase === "UNREGISTERED") {
-      // self-heal: pretend they viewed the PSA
+      console.info("[/register] missing/UNREGISTERED session → self-heal to PSA_VIEWED");
       const base =
         persisted ??
         createSession({
@@ -78,9 +79,11 @@ export default function RegisterPage() {
       return;
     }
     if (persisted.phase !== "PSA_VIEWED") {
-      // Already further along — bounce to the right place.
+      console.info(`[/register] phase=${persisted.phase} ahead of PSA_VIEWED → forwarding`);
       router.replace(PHASE_TO_ROUTE[persisted.phase]);
+      return;
     }
+    console.info("[/register] phase=PSA_VIEWED, rendering form");
   }, [router]);
 
   // -------- Camera --------

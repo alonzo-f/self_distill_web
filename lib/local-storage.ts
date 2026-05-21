@@ -72,19 +72,31 @@ export function loadSession(): PersistedSession | null {
   if (!hasStorage()) return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      console.info("[session] load: no entry");
+      return null;
+    }
     const parsed = JSON.parse(raw) as PersistedSession;
-    if (parsed.version !== STORAGE_VERSION) return null;
+    if (parsed.version !== STORAGE_VERSION) {
+      console.warn(
+        `[session] load: version mismatch (${parsed.version} vs ${STORAGE_VERSION}), discarding`,
+      );
+      return null;
+    }
+    console.info("[session] load:", { phase: parsed.phase, displayId: parsed.displayId });
     return parsed;
   } catch (err) {
-    console.warn("localStorage: failed to parse session", err);
+    console.warn("[session] load: parse failed", err);
     return null;
   }
 }
 
 /** Persist (or update) the session. Caller is responsible for setting `updatedAt`. */
 export function saveSession(session: PersistedSession): void {
-  if (!hasStorage()) return;
+  if (!hasStorage()) {
+    console.warn("[session] save: window.localStorage unavailable");
+    return;
+  }
   try {
     const payload: PersistedSession = {
       ...session,
@@ -92,8 +104,9 @@ export function saveSession(session: PersistedSession): void {
       updatedAt: Date.now(),
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    console.info("[session] save:", { phase: payload.phase });
   } catch (err) {
-    console.warn("localStorage: failed to save session", err);
+    console.warn("[session] save: WRITE FAILED — flow will rely on Zustand only", err);
   }
 }
 
