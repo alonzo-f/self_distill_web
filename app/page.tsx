@@ -1,12 +1,21 @@
 "use client";
 
-// v4 entry page — plays the PSA, then advances to /register.
-// Reference: docs/v4-migration-plan.md Phase 1; project_v4 III. 背景故事
-// Previous welcome/terms/photo logic moved to /register.
+// v4 entry page — fast-path straight to /register.
+// Reference: docs/v4-migration-plan.md Phase 1
+//
+// 历史: 这里原来播 PSA 视频, 然后推到 /register. 用户测试反馈期间
+// 决定彻底跳过 PSA — 直接进 /register, 把 PSA 留为可选的预演物料.
+//
+// On mount we:
+//   1. Rehydrate any existing session into Zustand
+//   2. If user is past PSA, route them to their actual page
+//   3. Otherwise stamp phase=PSA_VIEWED in storage + push /register
+//
+// We still write PSA_VIEWED to localStorage so the downstream gates
+// (RouteGuard, /register guard) continue to function unchanged.
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { PSAPlayer } from "@/components/PSAPlayer";
 import { useParticipantStore } from "@/stores/participant-store";
 import {
   loadSession,
@@ -16,70 +25,60 @@ import {
 } from "@/lib/local-storage";
 import { PHASE_TO_ROUTE } from "@/lib/state-machine";
 
-const PSA_VIDEO_SRC = "/psa.mp4"; // empty until阶段 11; player handles missing file
-
 export default function LandingPage() {
   const router = useRouter();
   const store = useParticipantStore();
 
-  // Re-entry guard: if user already has a session, route them to wherever they left off.
   useEffect(() => {
-    console.info("[/] mount; checking session");
+    console.info("[/] mount; routing user");
     const persisted = loadSession();
-    if (!persisted) {
-      console.info("[/] no persisted session — will play PSA");
-      return;
+
+    // Returning user — rehydrate and forward to wherever they left off.
+    if (persisted) {
+      store.setParticipant({
+        id: persisted.userId,
+        displayId: persisted.displayId,
+        displayName: persisted.displayName,
+        phoneLast4: persisted.phoneLast4,
+        phase: persisted.phase,
+      });
+      if (persisted.phase !== "UNREGISTERED") {
+        const route = PHASE_TO_ROUTE[persisted.phase];
+        console.info(`[/] persisted phase=${persisted.phase} → ${route}`);
+        router.replace(route);
+        return;
+      }
     }
 
-    // Rehydrate Zustand from localStorage.
-    store.setParticipant({
-      id: persisted.userId,
-      displayId: persisted.displayId,
-      displayName: persisted.displayName,
-      phoneLast4: persisted.phoneLast4,
-      phase: persisted.phase,
-    });
-
-    // If user already moved past PSA, jump them forward.
-    if (persisted.phase !== "UNREGISTERED") {
-      console.info(`[/] already past PSA (phase=${persisted.phase}) → replace to ${PHASE_TO_ROUTE[persisted.phase]}`);
-      router.replace(PHASE_TO_ROUTE[persisted.phase]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handlePsaComplete = () => {
-    console.info("[/] PSA complete → advancing to PSA_VIEWED + pushing /register");
-    // Persist PSA_VIEWED so we won't re-show the PSA on refresh
-    const existing = loadSession();
-    if (existing) {
-      saveSession(advancePhase(existing, "PSA_VIEWED"));
-    } else {
-      // First-time visitor — create a stub session (userId is set later in /register).
-      const tempId = crypto.randomUUID();
-      saveSession(advancePhase(createSession({
-        userId: tempId,
+    // First-time visitor: stamp PSA_VIEWED (since PSA is skipped) + push /register.
+    console.info("[/] fresh visitor — skipping PSA, going to /register");
+    const base =
+      persisted ??
+      createSession({
+        userId: crypto.randomUUID(),
         displayId: "",
         displayName: "",
         phoneLast4: null,
-      }), "PSA_VIEWED"));
-    }
+      });
+    saveSession(advancePhase(base, "PSA_VIEWED"));
     store.setPhase("PSA_VIEWED");
-    router.push("/register");
-  };
+    router.replace("/register");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Brief loading view while the redirect runs.
   return (
-    <>
-      <PSAPlayer videoSrc={PSA_VIDEO_SRC} onComplete={handlePsaComplete} />
+    <div className="min-h-screen bg-terminal-bg flex items-center justify-center">
+      <div className="text-terminal-dim text-xs font-mono animate-pulse">
+        Initializing Expression Optimization Service...
+      </div>
       <DebugBar />
-    </>
+    </div>
   );
 }
 
 /**
- * Visible debug strip on the PSA page only.
- * Shows the current phase + a [Reset Session] button so the user can
- * manually unstick themselves during local testing. Removed before演出.
+ * Reset button kept at top-right for testing. Removed before演出.
  */
 function DebugBar() {
   return (
