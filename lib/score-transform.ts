@@ -67,8 +67,11 @@ export const TIER_PARAMS: Record<RatingTier, TierParams> = {
     errorRateFactor: 1.8,
     complianceDelta: -15,
     showWarning: true,
-    buttonBehavior: "drift",
-    assessment: "Substantial misalignment with optimization vector.",
+    // v4 调整: 评分 ≤3 不再触发按钮飘移, 改为直接归档 (见
+    // app/benchmark/page.tsx 的 advanceToVerdict 分支). 这里仍写
+    // "normal" 以表语义"不适用" — 该 tier 用户不会到 /mine.
+    buttonBehavior: "normal",
+    assessment: "Substantial misalignment. Profile flagged for immediate archival.",
   },
 };
 

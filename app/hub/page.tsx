@@ -103,15 +103,12 @@ export default function HubPage() {
       label: "Leisure Zone",
       glyph: "☕",
       href: "/leisure",
-      unlocked: true,
+      // v4 调整 (用户需求): credit ≥ 50 才解锁
+      unlocked: credits >= 50 || store.leisureCredits > 0,
+      locked_reason: `${credits}/50 credits`,
     },
-    {
-      key: "wall",
-      label: "Wall Mirror",
-      glyph: "👁",
-      href: "/wall",
-      unlocked: true,
-    },
+    // v4 调整 (用户需求): Wall Mirror 入口对客户端隐藏,
+    // 仅 GHOST 模式通过 iframe 镜像可见.
     {
       key: "backdoor",
       label: "Backdoor",

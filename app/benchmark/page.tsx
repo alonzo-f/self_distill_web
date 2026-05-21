@@ -185,7 +185,7 @@ function BenchmarkContent() {
   }, [userRating, commitTier]);
 
   const advanceToVerdict = () => {
-    // v4: persist BENCHMARKED phase + tier-aware snapshot, then push to /verdict.
+    // v4: persist BENCHMARKED phase + tier-aware snapshot, then continue.
     const persisted = loadSession();
     if (persisted && scores && committedTier) {
       let next = advancePhase(persisted, "BENCHMARKED");
@@ -198,6 +198,12 @@ function BenchmarkContent() {
       saveSession(next);
     }
     store.setPhase("BENCHMARKED");
+
+    // v4 调整 (用户需求): 评分 1-3 档直接归档, 跳过 verdict + 主线.
+    if (committedTier === "1-3") {
+      router.push("/leisure/settlement?reason=rating");
+      return;
+    }
     router.push("/verdict");
   };
 

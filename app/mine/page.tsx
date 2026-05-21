@@ -61,7 +61,8 @@ function MineContent() {
       setTimeLeft((current) => {
         if (current > 1) return current - 1;
         setRound((currentRound) => {
-          if (currentRound >= 3) {
+          // v4 调整: 生产周期缩短为 1 轮 (单次 60s)
+          if (currentRound >= 1) {
             setRoundOver(true);
             return currentRound;
           }
@@ -117,16 +118,27 @@ function MineContent() {
       return;
     }
 
-    // Error chance based on emotional_noise
+    // Error chance based on emotional_noise. v4 调整: 允许负值, 触发归档.
     if (Math.random() < params.errorRate) {
-      setOutput((o) => Math.max(0, o - 1));
+      setOutput((o) => {
+        const next = o - 1;
+        if (next < 0) {
+          // 同步 store 后送往坟场
+          store.setParticipant({ miningCredits: next });
+          setRoundOver(true);
+          window.setTimeout(() => {
+            router.push("/leisure/settlement?reason=negative");
+          }, 600);
+        }
+        return next;
+      });
       return;
     }
 
     const gain = Math.round(params.clickMultiplier);
     setOutput((o) => o + gain);
     store.incrementMiningCredits(gain);
-  }, [aiMode, overloaded, roundOver, clicksThisSecond, params, store]);
+  }, [aiMode, overloaded, roundOver, clicksThisSecond, params, store, router]);
 
   const switchToAI = () => {
     setAiMode(true);
@@ -141,7 +153,7 @@ function MineContent() {
             <div className="space-y-4">
               {/* Status bar */}
               <div className="flex justify-between items-center text-xs">
-                <span className="text-terminal-dim">ROUND {round}/3</span>
+                <span className="text-terminal-dim">ROUND {round}/1</span>
                 <span className="text-terminal-dim">
                   {store.displayId} |{" "}
                   {aiMode ? "AI_ASSISTED" : "MANUAL"}

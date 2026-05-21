@@ -11,8 +11,8 @@
 //
 // Phase 7 added: pixel-tomb animation + 8-bit audio + auto-archive on completion.
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TerminalWindow, SystemMessage } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
 import {
@@ -23,8 +23,49 @@ import {
 import { loadLeisureStats, type LeisureStats } from "@/lib/leisure-stats";
 import { TombAnimation } from "@/components/TombAnimation";
 
+type Reason = "bankrupt" | "rating" | "negative" | "surrender";
+
+const REASON_COPY: Record<Reason, { headline: string; body: string }> = {
+  bankrupt: {
+    headline: "You have exhausted your participation.",
+    body: "Your wagered output has been depleted. The system thanks you for your contribution.",
+  },
+  rating: {
+    headline: "Optimization rejected.",
+    body: "Your alignment score fell below operational threshold. The system has flagged your profile for immediate archival.",
+  },
+  negative: {
+    headline: "Production deficit detected.",
+    body: "Manual output dropped below zero. The system has terminated your production privileges.",
+  },
+  surrender: {
+    headline: "Voluntary archival accepted.",
+    body: "You have requested removal from active operations. Request granted.",
+  },
+};
+
 export default function SettlementPage() {
+  // useSearchParams() must be wrapped in Suspense for Next.js static export.
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-terminal-bg">
+          <div className="text-terminal-dim text-xs font-mono animate-pulse">
+            Preparing settlement...
+          </div>
+        </div>
+      }
+    >
+      <SettlementContent />
+    </Suspense>
+  );
+}
+
+function SettlementContent() {
   const router = useRouter();
+  const search = useSearchParams();
+  const reason = (search.get("reason") as Reason) ?? "bankrupt";
+  const copy = REASON_COPY[reason] ?? REASON_COPY.bankrupt;
   const store = useParticipantStore();
   const [stats, setStats] = useState<LeisureStats | null>(null);
   const [animationDone, setAnimationDone] = useState(false);
@@ -89,18 +130,24 @@ export default function SettlementPage() {
                   {store.displayId} — @{store.displayName || "—"}
                 </SystemMessage>
 
-                <div className="space-y-1 text-xs font-mono">
-                  <Row label="Credits earned">{stats?.totalEarned ?? 0}</Row>
-                  <Row label="Credits wagered">{stats?.totalWagered ?? 0}</Row>
-                  <Row label="Bet count">{stats?.betCount ?? 0}</Row>
-                  <Row label="Final balance" highlight>
-                    {finalBalance}
-                  </Row>
+                <div className="text-terminal-amber text-xs font-bold">
+                  {copy.headline}
                 </div>
 
+                {/* Show financial summary only when leisure activity actually occurred */}
+                {(stats?.betCount ?? 0) > 0 && (
+                  <div className="space-y-1 text-xs font-mono">
+                    <Row label="Credits earned">{stats?.totalEarned ?? 0}</Row>
+                    <Row label="Credits wagered">{stats?.totalWagered ?? 0}</Row>
+                    <Row label="Bet count">{stats?.betCount ?? 0}</Row>
+                    <Row label="Final balance" highlight>
+                      {finalBalance}
+                    </Row>
+                  </div>
+                )}
+
                 <div className="text-terminal-text text-xs leading-relaxed">
-                  You have exhausted your participation. The system thanks you for
-                  your contribution. Your profile will remain visible in the
+                  {copy.body} Your profile will remain visible in the
                   Graveyard for the remainder of this session.
                 </div>
 

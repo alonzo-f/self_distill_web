@@ -42,6 +42,7 @@ function DistillContent() {
   const [distilledText, setDistilledText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [, setStreamComplete] = useState(false);
+  const [surrenderConfirm, setSurrenderConfirm] = useState(false);
 
   const originalText = store.originalText || "No expression data found.";
 
@@ -266,6 +267,46 @@ function DistillContent() {
             >
               Proceed to Evaluation →
             </button>
+
+            {/* v4 调整: 做题完成后, 用户可自愿进入坟场 (不可逆) */}
+            <button
+              onClick={() => setSurrenderConfirm(true)}
+              className="w-full border border-terminal-dim text-terminal-dim/80 px-4 py-2 text-[11px] hover:text-terminal-red hover:border-terminal-red transition-colors"
+            >
+              Surrender to Archive
+            </button>
+
+            {surrenderConfirm && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-sm border border-terminal-red bg-terminal-bg p-4 space-y-3">
+                  <div className="text-terminal-red text-xs tracking-widest">
+                    IRREVERSIBLE
+                  </div>
+                  <div className="text-terminal-text text-xs leading-relaxed">
+                    Surrendering will archive your profile immediately and lock
+                    you into Ghost Observer mode. You will not be evaluated,
+                    you will not produce, you will not earn credits.
+                    <br />
+                    <br />
+                    This decision cannot be undone within this session.
+                  </div>
+                  <button
+                    onClick={() => setSurrenderConfirm(false)}
+                    className="w-full border-2 border-terminal-green text-terminal-green bg-terminal-green/10 px-4 py-2 text-sm hover:bg-terminal-green/20 transition-colors"
+                  >
+                    ▣ Continue with Evaluation
+                  </button>
+                  <button
+                    onClick={() => {
+                      router.push("/leisure/settlement?reason=surrender");
+                    }}
+                    className="w-full border border-terminal-red text-terminal-red px-4 py-2 text-[11px] hover:bg-terminal-red/10 transition-colors"
+                  >
+                    Confirm — archive me now
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
