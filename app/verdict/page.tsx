@@ -12,6 +12,7 @@ import {
 import { useParticipantStore } from "@/stores/participant-store";
 import { determineVerdict } from "@/lib/score-transform";
 import { RouteGuard } from "@/components/RouteGuard";
+import { DistillationAnimation } from "@/components/DistillationAnimation";
 import { loadSession, saveSession, advancePhase } from "@/lib/local-storage";
 
 type Phase = "analyzing" | "reveal";
@@ -100,35 +101,29 @@ function VerdictContent() {
 
                 {/* Photo / Avatar */}
                 <div className="flex justify-center">
-                  {photoUrl && (
-                    <div
-                      className={`relative w-32 h-32 border-2 ${
-                        isDistilled
-                          ? "border-terminal-green"
-                          : "border-terminal-amber"
-                      } overflow-hidden`}
-                    >
-                      <Image
-                        src={photoUrl}
-                        alt="profile"
-                        width={128}
-                        height={128}
-                        unoptimized
-                        className={`w-full h-full object-cover ${
-                          isDistilled ? "opacity-30 blur-sm" : ""
-                        }`}
-                        style={{ transform: "scaleX(-1)" }}
-                      />
-                      {isDistilled && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-20 h-20 border-2 border-terminal-green rounded-full flex items-center justify-center">
-                            <span className="text-terminal-green text-2xl">
-                              ⬡
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                  {isDistilled ? (
+                    // v4: animated particle lattice replaces the static hex.
+                    // Photo dissolves → 64 green dots reorganize into 8×8 grid.
+                    <DistillationAnimation
+                      photoUrl={photoUrl}
+                      onComplete={() => {
+                        /* animation finishes silently; verdict copy stays. */
+                      }}
+                    />
+                  ) : (
+                    photoUrl && (
+                      <div className="relative w-32 h-32 border-2 border-terminal-amber overflow-hidden">
+                        <Image
+                          src={photoUrl}
+                          alt="profile"
+                          width={128}
+                          height={128}
+                          unoptimized
+                          className="w-full h-full object-cover"
+                          style={{ transform: "scaleX(-1)" }}
+                        />
+                      </div>
+                    )
                   )}
                 </div>
 
