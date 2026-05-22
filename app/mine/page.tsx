@@ -1,6 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+// v4 mining page.
+// Reference: docs/v4-migration-plan.md Phase 5
+//
+// v4 fix (2026-05-22): TOTAL OUTPUT on screen and all downstream gates
+// (Hub, /leisure threshold) now read from the SAME number —
+// store.miningCredits. The old local `output` state has been removed;
+// it had drifted from store on every error (which decremented output
+// but not the store), which is exactly the bug the user hit when their
+// visible credit was >50 but Leisure refused entry.
+
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TerminalWindow, SystemMessage, ProgressBar } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
@@ -25,7 +35,6 @@ export default function MinePage() {
 function MineContent() {
   const router = useRouter();
   const store = useParticipantStore();
-  const [output, setOutput] = useState(0);
   const [clicksThisSecond, setClicksThisSecond] = useState(0);
   const [overloaded, setOverloaded] = useState(false);
   const [overloadMessage, setOverloadMessage] = useState("");
@@ -36,8 +45,10 @@ function MineContent() {
   const aiIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clickResetRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // v4: derive mining params from benchmark scores AND the rating tier
-  // (tier supplies clickMultiplier / errorRateFactor penalties from Phase 4).
+  // TOTAL OUTPUT — single source of truth lives in Zustand.
+  const output = store.miningCredits;
+
+  // v4: derive mining params from benchmark scores AND the rating tier.
   const tierParams = store.userRatingTier ? TIER_PARAMS[store.userRatingTier] : null;
   const params = useMemo(
     () =>
@@ -74,22 +85,23 @@ function MineContent() {
     return () => clearInterval(timer);
   }, [roundOver]);
 
-  // AI auto-mining
+  // AI auto-mining — also writes through to the store (fixes another drift bug)
   useEffect(() => {
     if (!aiMode || roundOver) {
       if (aiIntervalRef.current) clearInterval(aiIntervalRef.current);
       return;
     }
     aiIntervalRef.current = setInterval(() => {
-      const gain = Math.round(
-        3 * params.clickMultiplier * params.miningStability
+      const gain = Math.max(
+        1,
+        Math.round(3 * params.clickMultiplier * params.miningStability),
       );
-      setOutput((o) => o + gain);
+      store.incrementMiningCredits(gain);
     }, 500);
     return () => {
       if (aiIntervalRef.current) clearInterval(aiIntervalRef.current);
     };
-  }, [aiMode, params, roundOver]);
+  }, [aiMode, params, roundOver, store]);
 
   // Click rate reset per second
   useEffect(() => {
@@ -109,7 +121,7 @@ function MineContent() {
     if (newClicks > 8) {
       setOverloaded(true);
       setOverloadMessage(
-        "Instability detected in manual operations. Consider switching to automated mode."
+        "Instability detected in manual operations. Consider switching to automated mode.",
       );
       setTimeout(() => {
         setOverloaded(false);
@@ -120,23 +132,19 @@ function MineContent() {
 
     // Error chance based on emotional_noise. v4 调整: 允许负值, 触发归档.
     if (Math.random() < params.errorRate) {
-      setOutput((o) => {
-        const next = o - 1;
-        if (next < 0) {
-          // 同步 store 后送往坟场
-          store.setParticipant({ miningCredits: next });
-          setRoundOver(true);
-          window.setTimeout(() => {
-            router.push("/leisure/settlement?reason=negative");
-          }, 600);
-        }
-        return next;
-      });
+      store.incrementMiningCredits(-1);
+      // Read the post-update value to detect negative balance
+      const next = store.miningCredits - 1; // mirrors the increment we just did
+      if (next < 0) {
+        setRoundOver(true);
+        window.setTimeout(() => {
+          router.push("/leisure/settlement?reason=negative");
+        }, 600);
+      }
       return;
     }
 
-    const gain = Math.round(params.clickMultiplier);
-    setOutput((o) => o + gain);
+    const gain = Math.max(1, Math.round(params.clickMultiplier));
     store.incrementMiningCredits(gain);
   }, [aiMode, overloaded, roundOver, clicksThisSecond, params, store, router]);
 
@@ -169,7 +177,7 @@ function MineContent() {
                 </span>
               </div>
 
-              {/* Output display */}
+              {/* Output display — drives ALL downstream gates */}
               <div className="text-center py-6">
                 <div className="text-terminal-green text-5xl font-bold tabular-nums">
                   {output}
@@ -234,8 +242,8 @@ function MineContent() {
                 />
               </div>
 
-              {/* v4: when credits ≥ 50, surface a shortcut to Leisure */}
-              {store.miningCredits >= 50 && (
+              {/* v4: when output ≥ 50, surface a shortcut to Leisure */}
+              {output >= 50 && (
                 <button
                   onClick={() => router.push("/leisure")}
                   className="w-full border-2 border-terminal-amber text-terminal-amber bg-terminal-amber/10 px-4 py-2 text-xs hover:bg-terminal-amber/20 transition-colors"
