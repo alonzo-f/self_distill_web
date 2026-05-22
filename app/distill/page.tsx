@@ -9,6 +9,7 @@ import {
 } from "@/components/terminal";
 import { useParticipantStore } from "@/stores/participant-store";
 import { RouteGuard } from "@/components/RouteGuard";
+import { getReferenceAnswer } from "@/lib/data/expression-prompts";
 import {
   loadSession,
   saveSession,
@@ -50,84 +51,56 @@ function DistillContent() {
     setPhase("reveal");
     setIsStreaming(true);
 
-    try {
-      const res = await fetch("/api/distill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId: store.id,
-          // v4: pass the actual HR question so the AI knows what's being answered.
-          promptText: store.promptText ?? "expression task",
-          userInput: originalText,
-        }),
-      });
-
-      if (!res.ok) throw new Error("API error");
-
-      if (res.headers.get("content-type")?.includes("text/event-stream")) {
-        // SSE streaming
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let fullText = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.text) {
-                  fullText += data.text;
-                  setDistilledText(fullText);
-                }
-                if (data.done) {
-                  fullText = data.full_text || fullText;
-                  setDistilledText(fullText);
-                }
-              } catch {}
-            }
-          }
-        }
-        store.setParticipant({
-          distilledText: fullText,
-          status: "DISTILLING",
-        });
-      } else {
-        // JSON response (mock mode)
-        const data = await res.json();
-        // Simulate streaming effect
-        const text = data.distilledText;
-        for (let i = 0; i <= text.length; i++) {
-          await new Promise((r) => setTimeout(r, 15));
-          setDistilledText(text.slice(0, i));
-        }
-        store.setParticipant({
-          distilledText: text,
-          status: "DISTILLING",
-        });
-      }
-    } catch {
-      // Fallback: simple mock distillation
-      const mockText = originalText
+    // v4 (2026-05-22): the "optimized output" is now the pre-written
+    // referenceAnswer for the matching HR question — not a live AI distillation
+    // of the user's text. This guarantees a consistent, fair benchmark target
+    // for the user to rate on /benchmark.
+    const reference = getReferenceAnswer(store.promptKey);
+    const text =
+      reference ??
+      // Fallback: if somehow promptKey is missing, mock-clean the user input
+      // so the page still has something to show.
+      originalText
         .replace(
           /\b(um|uh|like|you know|I mean|well|actually|basically)\b/gi,
-          ""
+          "",
         )
         .replace(/\s{2,}/g, " ")
         .trim();
-      for (let i = 0; i <= mockText.length; i++) {
-        await new Promise((r) => setTimeout(r, 15));
-        setDistilledText(mockText.slice(0, i));
+
+    // Stream the reference answer character-by-character to preserve the
+    // "AI is generating" feel.
+    for (let i = 0; i <= text.length; i++) {
+      await new Promise((r) => setTimeout(r, 15));
+      setDistilledText(text.slice(0, i));
+    }
+
+    store.setParticipant({
+      distilledText: text,
+      status: "DISTILLING",
+    });
+
+    // v4 (2026-05-22, 修改0519.md item 4): persist the user's input and
+    // distilled output server-side so the digital passport can render
+    // them later. Best-effort — memory store handles it when Supabase
+    // is offline.
+    if (store.id) {
+      try {
+        await fetch("/api/participants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: store.id,
+            displayId: store.displayId,
+            displayName: store.displayName || null,
+            originalText,
+            distilledText: text,
+            status: "DISTILLING",
+          }),
+        });
+      } catch {
+        /* non-fatal */
       }
-      store.setParticipant({
-        distilledText: mockText,
-        status: "DISTILLING",
-      });
     }
 
     setIsStreaming(false);

@@ -151,6 +151,12 @@ export function TombAnimation({
 /**
  * Renders the photo split into N vertical strips, each falling at a
  * staggered delay and fading out as it leaves the viewport.
+ *
+ * v4 fix (2026-05-22): switched from <Image fill ... style={{width}}> to a
+ * background-image approach. Next 16 throws "Image with 'fill' has both
+ * 'fill' and 'style.width'" if you try to widen the image past its
+ * container — that error crashed the entire settlement page when the
+ * tomb animation reached the shatter stage (~1s in).
  */
 function ShatterStrips({ photoUrl }: { photoUrl: string }) {
   const strips = Array.from({ length: SHATTER_STRIPS });
@@ -167,30 +173,23 @@ function ShatterStrips({ photoUrl }: { photoUrl: string }) {
             width: `${stripWidthPct}%`,
             animation: `drop-${i} 1s ease-in forwards`,
             animationDelay: `${i * 60}ms`,
+            backgroundImage: `url("${photoUrl}")`,
+            // The image fills the FULL parent (the photo's original aspect),
+            // so each strip shows a different horizontal slice.
+            backgroundSize: `${SHATTER_STRIPS * 100}% 100%`,
+            backgroundPosition: `${(i / (SHATTER_STRIPS - 1)) * 100}% 0%`,
+            backgroundRepeat: "no-repeat",
+            // Mirror to match the captured/registered photo orientation.
+            transform: "scaleX(-1)",
           }}
-        >
-          <Image
-            src={photoUrl}
-            alt=""
-            fill
-            unoptimized
-            className="object-cover"
-            style={{
-              transform: "scaleX(-1)",
-              objectPosition: `${-i * 100}% 0%`,
-              width: `${SHATTER_STRIPS * 100}%`,
-              left: `${-i * 100}%`,
-              position: "absolute",
-            }}
-          />
-        </div>
+        />
       ))}
       <style jsx>{`
         ${strips
           .map(
             (_, i) => `@keyframes drop-${i} {
-              0%   { transform: translateY(0); opacity: 1; }
-              100% { transform: translateY(120%); opacity: 0; }
+              0%   { transform: translateY(0) scaleX(-1); opacity: 1; }
+              100% { transform: translateY(120%) scaleX(-1); opacity: 0; }
             }`,
           )
           .join("\n")}

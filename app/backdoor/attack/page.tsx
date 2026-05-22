@@ -103,6 +103,29 @@ function AttackContent() {
           remainingTokens: data.remainingTokens,
         });
         setSelected(null);
+
+        // v4 (2026-05-22, 修改0519.md item 6+7): hand off the attack details
+        // to the /wall page via sessionStorage so it can replay the kill
+        // animation immediately on mount — without waiting for Supabase
+        // realtime or the next 5s poll. Includes the attacker's display
+        // id so the live announcement reads "X killed Y".
+        try {
+          sessionStorage.setItem(
+            "self-distill:pending-attack",
+            JSON.stringify({
+              targetDisplayId: data.targetDisplayId,
+              attackerDisplayId: data.attackerDisplayId ?? store.displayId,
+              actionType: data.actionType,
+              amount: data.amount ?? null,
+              at: Date.now(),
+            }),
+          );
+        } catch {
+          /* sessionStorage unavailable — non-fatal, wall just won't auto-replay */
+        }
+
+        // Jump to the wall so they see the kill animation on the big screen.
+        window.setTimeout(() => router.push("/wall"), 1200);
       }
     } catch {
       /* non-fatal */

@@ -18,15 +18,19 @@ import { useParticipantStore } from "@/stores/participant-store";
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { BackdoorAnimation } from "@/components/BackdoorAnimation";
+import { EmailCapture } from "@/components/EmailCapture";
 import {
   loadSession,
   saveSession,
   advancePhase,
 } from "@/lib/local-storage";
 
+// v4 (2026-05-22): English-only display; prior 编剧/导演 + 程序员 labels
+// clashed with the rest of the otherwise-English UI. Per 修改0519.md, drop
+// "Writer" — BUILDER_01 is just "Director".
 const BUILDERS = [
-  { id: "BUILDER_01", role: "编剧/导演" },
-  { id: "BUILDER_02", role: "程序员" },
+  { id: "BUILDER_01", role: "Director" },
+  { id: "BUILDER_02", role: "Programmer" },
 ];
 
 export default function BackdoorPage() {
@@ -81,7 +85,7 @@ function BackdoorContent() {
             displayId: store.displayId,
             displayName: store.displayName || null,
             phase: "BACKDOOR_FOUND",
-            attackTokens: 3,
+            attackTokens: 1,
             backendUnlocked: true,
           }),
         });
@@ -176,6 +180,9 @@ function BackdoorContent() {
                     has you now.
                   </SystemMessage>
                 )}
+
+                {/* v4 (2026-05-22): email follow-up capture for full-flow users */}
+                <EmailCapture variant="backdoor" />
 
                 {/* Actions */}
                 <div className="space-y-2 pt-2 border-t border-terminal-border/40">

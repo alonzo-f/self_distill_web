@@ -39,6 +39,15 @@ export interface WallParticipant {
   builderRole?: string | null;
   engagementPoints?: number;
   backendUnlocked?: boolean;
+
+  // v4 (2026-05-22): user-supplied email for post-experience SMS follow-up.
+  email?: string | null;
+
+  // v4 (2026-05-22, 修改0519.md item 4): cached so the digital passport
+  // can render the user's original answer and the AI-distilled output.
+  // Server side only — wall UI doesn't display these.
+  originalText?: string | null;
+  distilledText?: string | null;
 }
 
 export type ParticipantUpsert = Partial<WallParticipant> & {

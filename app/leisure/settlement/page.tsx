@@ -22,6 +22,7 @@ import {
 } from "@/lib/local-storage";
 import { loadLeisureStats, type LeisureStats } from "@/lib/leisure-stats";
 import { TombAnimation } from "@/components/TombAnimation";
+import { EmailCapture } from "@/components/EmailCapture";
 
 type Reason = "bankrupt" | "rating" | "negative" | "surrender";
 
@@ -70,6 +71,7 @@ function SettlementContent() {
   const [stats, setStats] = useState<LeisureStats | null>(null);
   const [animationDone, setAnimationDone] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [archived, setArchived] = useState(false);
 
   useEffect(() => {
     // External-system sync: localStorage → state, one-shot on mount.
@@ -79,15 +81,24 @@ function SettlementContent() {
 
   const finalBalance = store.leisureCredits;
 
-  const handleArchive = async () => {
-    setArchiving(true);
-    // Persist GHOST phase on the client
+  /**
+   * v4 (2026-05-22): write the archive THE MOMENT the tomb animation
+   * completes — not when the user clicks "Continue". Reason: the projection
+   * wall's graveyard polls /api/participants and would otherwise stay empty
+   * while the user lingers on the summary panel.
+   */
+  const archiveOnServer = async () => {
+    if (archived) return;
+    setArchived(true);
+
+    // Local state first (instant)
     store.archive(); // sets phase=GHOST + status=ARCHIVED + archivedAt
     const persisted = loadSession();
     if (persisted) {
       saveSession(advancePhase(persisted, "GHOST"));
     }
-    // Best-effort sync the archival to the server
+
+    // Best-effort sync to the server (memory or Supabase, whichever is up).
     if (store.id) {
       try {
         await fetch("/api/participants", {
@@ -106,6 +117,17 @@ function SettlementContent() {
         /* non-fatal */
       }
     }
+  };
+
+  const handleAnimationComplete = () => {
+    setAnimationDone(true);
+    void archiveOnServer();
+  };
+
+  const handleArchive = async () => {
+    setArchiving(true);
+    // Make sure we've archived (idempotent — no-op if animation already did it)
+    await archiveOnServer();
     router.replace("/ghost");
   };
 
@@ -120,7 +142,7 @@ function SettlementContent() {
                 photoUrl={store.photoUrl}
                 displayId={store.displayId || "HUMAN_???"}
                 displayName={store.displayName}
-                onComplete={() => setAnimationDone(true)}
+                onComplete={handleAnimationComplete}
               />
             </div>
 
@@ -150,6 +172,9 @@ function SettlementContent() {
                   {copy.body} Your profile will remain visible in the
                   Graveyard for the remainder of this session.
                 </div>
+
+                {/* v4 (2026-05-22): email follow-up capture */}
+                <EmailCapture variant="graveyard" />
 
                 <button
                   onClick={handleArchive}

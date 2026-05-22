@@ -23,16 +23,39 @@ export interface BetResult {
   reason?: "insufficient-funds" | "invalid";
   newBalance?: number;
   outcomeDelta?: number;
+  /** True if the engine forced this bet's outcome to reach a 6-round endgame. */
+  forced?: boolean;
 }
 
 export interface UseLeisureBetting {
   balance: number;
   engagement: number;
+  /**
+   * v4 (2026-05-22, 修改0519.md item 2): true once the user has accumulated
+   * ≥ 100 leisure credits. Each game uses this to:
+   *   - grey out all manual bet buttons + the auto-spin button
+   *   - render a single "ENTER BACKDOOR →" button below auto-spin that
+   *     navigates to /backdoor (the only remaining valid action).
+   */
+  backdoorLocked: boolean;
   placeBet: (args: {
     wager: number;
     outcomeDelta: number; // positive on win, negative on loss; 0 = push
   }) => BetResult;
 }
+
+const BACKDOOR_THRESHOLD = 100;
+
+// v4 (2026-05-22, 修改0519.md item 2): cap the leisure arc at 6 rounds.
+// On the 6th bet we deterministically resolve to one of two endgames:
+//   - balance ≤ 0  → graveyard (settlement)
+//   - balance ≥ 100 → backdoor unlock (Hub surfaces the Backdoor button;
+//     LeisureHeader's "BACKDOOR ACCESS UNLOCKED" banner appears)
+// The split point is 50: if the user's balance going INTO round 6 is
+// ≥50, we round it up to ≥100; otherwise we crash it to ≤0.
+const MAX_LEISURE_ROUNDS = 6;
+const FORCED_WIN_TARGET = 100;
+const FORCED_LOSS_TARGET = 0;
 
 /** Routes a bet through Zustand + localStorage; returns the post-bet state. */
 export function useLeisureBetting(game: LeisureGame): UseLeisureBetting {
@@ -43,16 +66,38 @@ export function useLeisureBetting(game: LeisureGame): UseLeisureBetting {
     ({ wager, outcomeDelta }) => {
       if (wager <= 0) return { ok: false, reason: "invalid" };
       if (wager > store.leisureCredits) return { ok: false, reason: "insufficient-funds" };
+      // v4 (2026-05-22, 修改0519.md item 2): once balance crosses 100 the
+      // only valid action is to enter the Backdoor. Reject further bets.
+      if (store.leisureCredits >= BACKDOOR_THRESHOLD) {
+        return { ok: false, reason: "invalid" };
+      }
 
-      const newBalance = store.leisureCredits + outcomeDelta;
+      const stats = loadLeisureStats();
+      const roundNumber = (stats.betCount ?? 0) + 1;
+      let finalDelta = outcomeDelta;
+      let forced = false;
+
+      // v4: force the 6th round to land on one of the two endgames.
+      if (roundNumber >= MAX_LEISURE_ROUNDS) {
+        const currentBalance = store.leisureCredits;
+        if (currentBalance >= 50) {
+          finalDelta = FORCED_WIN_TARGET - currentBalance;
+          forced = true;
+        } else {
+          finalDelta = FORCED_LOSS_TARGET - currentBalance;
+          forced = true;
+        }
+      }
+
+      const newBalance = store.leisureCredits + finalDelta;
 
       store.setParticipant({ leisureCredits: newBalance });
       store.addEngagementPoints(ENGAGEMENT_PER_BET[game]);
 
-      recordBet(loadLeisureStats(), {
+      recordBet(stats, {
         game,
         wager,
-        outcomeDelta,
+        outcomeDelta: finalDelta,
       });
 
       // v4: negative or zero balance → archive flow
@@ -63,7 +108,7 @@ export function useLeisureBetting(game: LeisureGame): UseLeisureBetting {
         }, 1500);
       }
 
-      return { ok: true, newBalance, outcomeDelta };
+      return { ok: true, newBalance, outcomeDelta: finalDelta, forced };
     },
     [game, router, store],
   );
@@ -71,6 +116,7 @@ export function useLeisureBetting(game: LeisureGame): UseLeisureBetting {
   return {
     balance: store.leisureCredits,
     engagement: store.engagementPoints,
+    backdoorLocked: store.leisureCredits >= BACKDOOR_THRESHOLD,
     placeBet,
   };
 }

@@ -124,6 +124,12 @@ export interface ExpressionPrompt {
   key: string;
   text: string;
   timeLimit: number;
+  /**
+   * v4 (2026-05-22): The pre-written "ideal AI answer" for this HR question
+   * (≤50 words, optimized for clarity & efficiency). Shown on /distill as the
+   * optimized output for the user to rate on /benchmark.
+   */
+  referenceAnswer: string;
 }
 
 // AI Provider abstraction

@@ -8,17 +8,55 @@
 // renders Builder rows in gold and pushes them to the bottom of the list.
 
 import { NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSupabaseAdminClient, markSupabaseDown } from "@/lib/supabase/admin";
+import { listParticipants } from "@/lib/participants/repository";
 import type { GraveyardEntry } from "@/lib/participants/types";
 
 const MAX_RECENT_ARCHIVED = 12;
+
+/**
+ * v4 (2026-05-22): build a graveyard payload from the in-memory store
+ * (which `listParticipants` returns when Supabase is missing or unreachable).
+ * Keeps the wall responsive in a single-process dev setup with no Docker.
+ */
+async function memoryGraveyard(): Promise<GraveyardEntry[]> {
+  const all = await listParticipants();
+  const archived = all
+    .filter((p) => !p.isPermanent && p.archivedAt)
+    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
+    .slice(0, MAX_RECENT_ARCHIVED)
+    .map<GraveyardEntry>((p) => ({
+      displayName: p.displayName ?? "",
+      archivedAt: p.archivedAt ? new Date(p.archivedAt).toISOString() : null,
+      isPermanent: false,
+    }));
+
+  const builders = all
+    .filter((p) => p.isPermanent)
+    .sort((a, b) => a.displayId.localeCompare(b.displayId))
+    .map<GraveyardEntry>((p) => ({
+      displayName: p.displayName ?? "",
+      archivedAt: p.archivedAt ? new Date(p.archivedAt).toISOString() : null,
+      isPermanent: true,
+    }));
+
+  // Always surface the Builder anchors, even if the memory store is empty.
+  const seen = new Set(builders.map((b) => b.displayName));
+  const merged = [
+    ...archived,
+    ...builders,
+    ...BUILDER_FALLBACK.filter((b) => !seen.has(b.displayName)),
+  ];
+  return merged;
+}
 
 export async function GET() {
   const supabase = getSupabaseAdminClient();
 
   if (!supabase) {
+    const entries = await memoryGraveyard();
     return NextResponse.json(
-      { entries: BUILDER_FALLBACK } satisfies GraveyardResponse,
+      { entries } satisfies GraveyardResponse,
       { headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -62,9 +100,15 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (err) {
-    console.error("GET /api/graveyard error:", err);
+    // v4 (2026-05-22): Supabase configured but unreachable — same graceful
+    // fallback path used by /api/participants. The memory store is shared
+    // across all routes in this Node process, so the wall will still see
+    // archives produced by mobile clients hitting the same dev server.
+    console.warn("[graveyard] Supabase unreachable, using memory store:", err);
+    markSupabaseDown();
+    const entries = await memoryGraveyard();
     return NextResponse.json(
-      { entries: BUILDER_FALLBACK } satisfies GraveyardResponse,
+      { entries } satisfies GraveyardResponse,
       { status: 200, headers: { "Cache-Control": "no-store" } },
     );
   }

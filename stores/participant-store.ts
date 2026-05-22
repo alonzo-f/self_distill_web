@@ -70,6 +70,11 @@ interface ParticipantState {
   archivedAt: number | null;
   isPermanent: boolean;
 
+  // v4 (2026-05-22): post-experience email for SMS follow-up. Collected
+  // either on the settlement page (graveyard path) or backdoor page
+  // (full-flow path).
+  email: string | null;
+
   // Calibration results (stored locally before submission)
   calibrationAnswers: {
     questionKey: string;
@@ -129,6 +134,7 @@ const initialState = {
   attackTokens: 0,
   archivedAt: null,
   isPermanent: false,
+  email: null,
   calibrationAnswers: [],
 };
 
@@ -174,8 +180,10 @@ export const useParticipantStore = create<ParticipantState>()(
   unlockBackend: () =>
     set((state) => ({
       backendUnlocked: true,
-      // v4: backdoor 解锁自动获 3 个 attack token
-      attackTokens: state.attackTokens || 3,
+      // v4 (2026-05-22, 修改0519.md item 5): backdoor unlock now grants
+      // exactly 1 attack token. The user picks ONE of three actions
+      // (SIPHON / CORRUPT / SWAP) — there are no re-tries.
+      attackTokens: state.attackTokens || 1,
     })),
 
   spendAttackToken: () => {

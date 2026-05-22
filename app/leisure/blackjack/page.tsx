@@ -12,6 +12,7 @@ import { SystemMessage } from "@/components/terminal";
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { LeisureHeader } from "@/components/LeisureHeader";
+import { ForcedBackdoorButton } from "@/components/ForcedBackdoorButton";
 import { useLeisureBetting } from "@/lib/use-leisure-betting";
 
 const WAGER_OPTIONS = [10, 50, 100];
@@ -51,7 +52,7 @@ export default function BlackjackPage() {
 }
 
 function BlackjackContent() {
-  const { balance, engagement, placeBet } = useLeisureBetting("BLACKJACK");
+  const { balance, engagement, placeBet, backdoorLocked } = useLeisureBetting("BLACKJACK");
   const [wager, setWager] = useState(10);
   const [phase, setPhase] = useState<RoundPhase>("betting");
   const [player, setPlayer] = useState<Card[]>([]);
@@ -187,18 +188,19 @@ function BlackjackContent() {
               </div>
               <button
                 onClick={startRound}
-                disabled={wager > balance}
+                disabled={wager > balance || backdoorLocked}
                 className="w-full py-3 rounded-md border border-terminal-green text-terminal-green hover:bg-terminal-green/10 text-sm tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ▣ DEAL
               </button>
               <button
                 onClick={autoPlay}
-                disabled={wager > balance}
+                disabled={wager > balance || backdoorLocked}
                 className="w-full py-2 rounded-md border border-terminal-dim text-terminal-dim text-[11px] hover:border-terminal-amber hover:text-terminal-amber transition-colors disabled:opacity-40"
               >
                 ⚡ AUTO-PLAY (AI keeps 30% of winnings)
               </button>
+              <ForcedBackdoorButton visible={backdoorLocked} />
             </>
           )}
 

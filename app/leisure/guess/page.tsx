@@ -11,6 +11,7 @@ import { SystemMessage } from "@/components/terminal";
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { LeisureHeader } from "@/components/LeisureHeader";
+import { ForcedBackdoorButton } from "@/components/ForcedBackdoorButton";
 import { useLeisureBetting } from "@/lib/use-leisure-betting";
 
 type Choice = "BIG" | "SMALL";
@@ -35,7 +36,7 @@ export default function GuessPage() {
 }
 
 function GuessContent() {
-  const { balance, engagement, placeBet } = useLeisureBetting("GUESS");
+  const { balance, engagement, placeBet, backdoorLocked } = useLeisureBetting("GUESS");
   const [wager, setWager] = useState(10);
   const [last, setLast] = useState<LastResult | null>(null);
 
@@ -102,14 +103,14 @@ function GuessContent() {
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => playManual("SMALL")}
-              disabled={wager > balance}
+              disabled={wager > balance || backdoorLocked}
               className="py-4 rounded-md border border-terminal-green text-terminal-green hover:bg-terminal-green/10 text-sm tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ◁ SMALL (≤50)
             </button>
             <button
               onClick={() => playManual("BIG")}
-              disabled={wager > balance}
+              disabled={wager > balance || backdoorLocked}
               className="py-4 rounded-md border border-terminal-green text-terminal-green hover:bg-terminal-green/10 text-sm tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
             >
               BIG (&gt;50) ▷
@@ -118,11 +119,13 @@ function GuessContent() {
 
           <button
             onClick={playAuto}
-            disabled={wager > balance}
+            disabled={wager > balance || backdoorLocked}
             className="w-full py-2 rounded-md border border-terminal-dim text-terminal-dim text-[11px] hover:border-terminal-amber hover:text-terminal-amber transition-colors disabled:opacity-40"
           >
             ⚡ AUTO-GAMBLE (AI keeps 30% of winnings)
           </button>
+
+          <ForcedBackdoorButton visible={backdoorLocked} />
         </div>
 
         {/* Last result */}

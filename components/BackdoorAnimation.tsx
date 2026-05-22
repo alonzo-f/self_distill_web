@@ -25,7 +25,9 @@ interface BackdoorAnimationProps {
 
 type Stage = "intro" | "tile" | "drift" | "merge" | "text" | "done";
 
-const TILES_PER_AXIS = 6;
+// v4 (2026-05-22): denser tile grid for a stronger particle dissolve.
+// 6×6 (36 tiles) felt blocky; 14×14 (196 tiles) reads as proper "particles".
+const TILES_PER_AXIS = 14;
 const TILE_COUNT = TILES_PER_AXIS * TILES_PER_AXIS;
 
 export function BackdoorAnimation({
@@ -151,27 +153,30 @@ function TileGrid({
       {tiles.map((_, i) => {
         const row = Math.floor(i / TILES_PER_AXIS);
         const col = i % TILES_PER_AXIS;
-        const delay = (i * 25) % 500;
-        // Random horizontal nudge to make the drift feel particle-like
-        const xJitter = ((i * 37) % 60) - 30;
+        // v4: with 196 tiles we want a longer stagger window so the dissolve
+        // reads as a steady particle stream rather than one big drop.
+        const delay = (i * 7) % 900;
+        // Wider horizontal jitter so tiles disperse like real particles
+        const xJitter = ((i * 53) % 90) - 45;
         // All tiles drift roughly straight down toward y ≈ 300px
-        const targetY = drifting ? 280 - row * 4 : 0;
+        const targetY = drifting ? 280 - row * 2 : 0;
         const targetX = drifting ? xJitter : 0;
         const opacity = drifting ? 0 : 0.95;
+        const tileSize = 128 / TILES_PER_AXIS;
         return (
           <div
             key={i}
             className="absolute"
             style={{
-              top: `${row * (128 / TILES_PER_AXIS)}px`,
-              left: `${col * (128 / TILES_PER_AXIS)}px`,
-              width: `${128 / TILES_PER_AXIS}px`,
-              height: `${128 / TILES_PER_AXIS}px`,
+              top: `${row * tileSize}px`,
+              left: `${col * tileSize}px`,
+              width: `${tileSize}px`,
+              height: `${tileSize}px`,
               backgroundImage: `url(${photoUrl})`,
               backgroundSize: "128px 128px",
-              backgroundPosition: `-${col * (128 / TILES_PER_AXIS)}px -${row * (128 / TILES_PER_AXIS)}px`,
+              backgroundPosition: `-${col * tileSize}px -${row * tileSize}px`,
               transform: `translate(${targetX}px, ${targetY}px) scaleX(-1)`,
-              transition: `transform 1.3s ease-in ${delay}ms, opacity 1.3s ease-in ${delay}ms`,
+              transition: `transform 1.5s ease-in ${delay}ms, opacity 1.5s ease-in ${delay}ms`,
               opacity,
               imageRendering: "pixelated",
               filter: drifting ? "saturate(0.6) brightness(0.85)" : undefined,

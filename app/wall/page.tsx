@@ -32,12 +32,15 @@ import {
 } from "@/components/wall/QuadrantC_Announcements";
 import { QuadrantD_Graveyard } from "@/components/wall/QuadrantD_Graveyard";
 
-const FALLBACK_POLL_INTERVAL_MS = 30_000;
+// v4 (2026-05-22): faster fallback poll so the kill animation has a chance
+// of firing for participants watching the wall even when Supabase realtime
+// is unavailable. The wall also picks up `sessionStorage` handoffs from the
+// attack page on mount (item 6+7 of 修改0519.md).
+const FALLBACK_POLL_INTERVAL_MS = 5_000;
 const ANNOUNCEMENT_TTL_MS = 8_000;
-// v4 (user-driven update): hold the target visible long enough for the
-// kill animation (shake 1.2s + ring pulse 0.8s + B&W transition) to play,
-// then it disappears into the graveyard.
-const ATTACK_OVERLAY_TTL_MS = 2_400;
+// v4 (2026-05-22, 修改0519.md item 7): the kill animation now spans the
+// 3-pulse red flash (1.5s) + cluster shake + ring pulse, so widen the TTL.
+const ATTACK_OVERLAY_TTL_MS = 3_000;
 
 export default function WallPage() {
   const participant = useParticipantStore();
@@ -120,6 +123,95 @@ export default function WallPage() {
     }, ATTACK_OVERLAY_TTL_MS);
   }, []);
 
+  /**
+   * v4 (2026-05-22, 修改0519.md item 6+7): the attack page stashes the
+   * attack details in sessionStorage just before redirecting here. Replay
+   * the kill animation + announcement on mount so the attacker sees their
+   * own action play out instantly, without waiting for Supabase realtime
+   * or the polling diff to catch up.
+   */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem("self-distill:pending-attack");
+      if (raw) sessionStorage.removeItem("self-distill:pending-attack");
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    if (!raw) return;
+    try {
+      const evt = JSON.parse(raw) as {
+        targetDisplayId: string;
+        attackerDisplayId?: string;
+        actionType?: string;
+        amount?: number | null;
+        at?: number;
+      };
+      if (!evt.targetDisplayId) return;
+      // Skip stale events (>30s old) so an old session doesn't replay.
+      if (evt.at && Date.now() - evt.at > 30_000) return;
+
+      const evtId = `pa-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const suffix =
+        evt.actionType === "SIPHON" && evt.amount
+          ? ` (siphoned ${evt.amount} credits)`
+          : "";
+      pushAnnouncement({
+        id: evtId,
+        kind: "backdoor_attack",
+        text: `${evt.attackerDisplayId ?? "?"} killed ${evt.targetDisplayId}${suffix}`,
+        at: Date.now(),
+      });
+      pushAttackEvent({
+        id: evtId,
+        sourceDisplayId: evt.attackerDisplayId ?? "?",
+        targetDisplayId: evt.targetDisplayId,
+        kind: "backdoor",
+        at: Date.now(),
+      });
+    } catch {
+      /* malformed payload — ignore */
+    }
+    // Intentionally empty deps: one-shot on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * v4 (2026-05-22, 修改0519.md item 7): detect newly-archived participants
+   * via poll diff. When a participant flips from non-ARCHIVED to ARCHIVED
+   * between polls, fire the kill animation. This is the fallback path when
+   * Supabase realtime is unavailable.
+   */
+  const knownArchivedRef =
+    typeof globalThis !== "undefined"
+      ? (globalThis as { __wallKnownArchived?: Set<string> }).__wallKnownArchived
+      : undefined;
+  useEffect(() => {
+    const seen =
+      knownArchivedRef ??
+      (() => {
+        const s = new Set<string>();
+        (globalThis as { __wallKnownArchived?: Set<string> }).__wallKnownArchived = s;
+        return s;
+      })();
+    for (const p of participants) {
+      if (p.isPermanent || p.status !== "ARCHIVED") continue;
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      // Don't replay archives we've already announced via session-storage.
+      // (Both paths are idempotent enough — the overlay just won't double-up
+      // because the announcement IDs are unique.)
+      const evtId = `arch-${p.id}-${Date.now()}`;
+      pushAttackEvent({
+        id: evtId,
+        sourceDisplayId: "system",
+        targetDisplayId: p.displayId,
+        kind: "backdoor",
+        at: Date.now(),
+      });
+    }
+  }, [participants, pushAttackEvent, knownArchivedRef]);
+
   // Subscribe to wall:events channel for backdoor_attack + operator_action
   // payloads emitted by the new broadcast triggers in 202605200002 migration.
   useEffect(() => {
@@ -194,8 +286,26 @@ export default function WallPage() {
     (p) => !p.isPermanent && p.status === "ARCHIVED",
   ).length;
 
+  // v4 (2026-05-22, 修改0519.md item 3): if the participant has spent their
+  // attack token (i.e. they got here by attacking from the backdoor), they
+  // are now in observer mode — display a permanent banner so they
+  // understand their participation is complete.
+  const isObserver = participant.backendUnlocked && participant.attackTokens === 0;
+
   return (
     <div className="h-screen w-screen bg-terminal-bg text-terminal-text font-mono overflow-hidden p-3 flex flex-col">
+      {/* v4 (2026-05-22, 修改0519.md item 3): observer-mode banner. Visible
+          only to participants who completed the full flow + spent their
+          attack token. Lets them know their session is now read-only. */}
+      {isObserver && (
+        <div className="mb-2 border-2 border-amber-300 bg-amber-300/10 px-3 py-2 text-amber-300 text-[11px] tracking-widest flex items-center justify-between animate-pulse flex-shrink-0">
+          <span>👁 OBSERVER MODE</span>
+          <span className="text-amber-300/70 text-[10px]">
+            {participant.displayId} · your action has been recorded · enjoy the show
+          </span>
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="flex justify-between items-center mb-2 text-[11px] text-terminal-dim flex-shrink-0">
         <div className="flex items-center gap-3">

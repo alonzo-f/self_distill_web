@@ -1,11 +1,11 @@
-import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSupabaseAdminClient, markSupabaseDown } from "@/lib/supabase/admin";
 import type { UserPhase } from "@/types";
 import type { ParticipantUpsert, WallParticipant, WallScores } from "./types";
 
 // v4: columns we always select for wall/participant queries.
 // Kept as a single-line string for Supabase's type-level select parser.
 const PARTICIPANT_SELECT =
-  "id, display_id, display_name, phase, status, verdict, output, is_operator, joined_at, last_seen_at, photo_url, clarity_score, efficiency_score, emotional_noise_score, compliance_score, user_rating_tier, tier_click_multiplier, tier_error_rate_factor, leisure_game, attack_tokens, archived_at, is_permanent, is_builder, builder_role, engagement_points, backend_unlocked";
+  "id, display_id, display_name, phase, status, verdict, output, is_operator, joined_at, last_seen_at, photo_url, clarity_score, efficiency_score, emotional_noise_score, compliance_score, user_rating_tier, tier_click_multiplier, tier_error_rate_factor, leisure_game, attack_tokens, archived_at, is_permanent, is_builder, builder_role, engagement_points, backend_unlocked, email, original_text, distilled_text";
 
 const PHOTO_BUCKET = "participant-photos";
 
@@ -76,6 +76,9 @@ function fromDb(row: Record<string, unknown>): WallParticipant {
     builderRole: row.builder_role ? String(row.builder_role) : null,
     engagementPoints: Number(row.engagement_points ?? 0),
     backendUnlocked: Boolean(row.backend_unlocked),
+    email: row.email ? String(row.email) : null,
+    originalText: row.original_text ? String(row.original_text) : null,
+    distilledText: row.distilled_text ? String(row.distilled_text) : null,
   };
 }
 
@@ -152,57 +155,100 @@ export async function listParticipants() {
     return Array.from(getMemoryStore().values()).sort((a, b) => b.output - a.output);
   }
 
-  const { data, error } = await supabase
-    .from("participants")
-    .select(PARTICIPANT_SELECT)
-    .order("output", { ascending: false });
+  // v4 (2026-05-22): graceful degradation. If Supabase is configured but
+  // unreachable (e.g. local Docker not running), fall through to the
+  // in-memory store so the wall + clients sharing this Node process can
+  // still see each other.
+  try {
+    const { data, error } = await supabase
+      .from("participants")
+      .select(PARTICIPANT_SELECT)
+      .order("output", { ascending: false });
 
-  if (error) throw error;
-  return (data ?? []).map(fromDb);
+    if (error) throw error;
+    return (data ?? []).map(fromDb);
+  } catch (err) {
+    console.warn("[participants] Supabase unreachable, using memory store:", err);
+    markSupabaseDown();
+    return Array.from(getMemoryStore().values()).sort((a, b) => b.output - a.output);
+  }
+}
+
+/**
+ * Build a WallParticipant entry from an upsert payload + optional existing
+ * row. Shared between the no-Supabase code path and the
+ * Supabase-but-unreachable fallback.
+ */
+function buildMemoryEntry(
+  input: ParticipantUpsert,
+  existing: WallParticipant | undefined,
+): WallParticipant {
+  return {
+    id: input.id,
+    displayId: input.displayId,
+    displayName: input.displayName ?? existing?.displayName ?? null,
+    phase: input.phase ?? existing?.phase ?? "UNREGISTERED",
+    status: input.status ?? existing?.status ?? "MINING",
+    verdict: input.verdict ?? existing?.verdict ?? null,
+    output: input.output ?? existing?.output ?? 0,
+    isOperator: input.isOperator ?? existing?.isOperator ?? false,
+    joinedAt: existing?.joinedAt ?? Date.now(),
+    lastSeenAt: Date.now(),
+    photoUrl: input.photoUrl ?? existing?.photoUrl ?? null,
+    scores: input.scores ?? existing?.scores,
+    userRatingTier: input.userRatingTier ?? existing?.userRatingTier ?? null,
+    tierClickMultiplier: input.tierClickMultiplier ?? existing?.tierClickMultiplier ?? 1.0,
+    tierErrorRateFactor: input.tierErrorRateFactor ?? existing?.tierErrorRateFactor ?? 1.0,
+    leisureGame: input.leisureGame ?? existing?.leisureGame ?? null,
+    attackTokens: input.attackTokens ?? existing?.attackTokens ?? 0,
+    archivedAt: input.archivedAt ?? existing?.archivedAt ?? null,
+    isPermanent: input.isPermanent ?? existing?.isPermanent ?? false,
+    isBuilder: input.isBuilder ?? existing?.isBuilder ?? false,
+    builderRole: input.builderRole ?? existing?.builderRole ?? null,
+    engagementPoints: input.engagementPoints ?? existing?.engagementPoints ?? 0,
+    backendUnlocked: input.backendUnlocked ?? existing?.backendUnlocked ?? false,
+    email: input.email ?? existing?.email ?? null,
+    originalText: input.originalText ?? existing?.originalText ?? null,
+    distilledText: input.distilledText ?? existing?.distilledText ?? null,
+  };
+}
+
+/** v4 (2026-05-22): write to the in-memory store and return the resulting entry. */
+function upsertMemory(input: ParticipantUpsert): WallParticipant {
+  const store = getMemoryStore();
+  const entry = buildMemoryEntry(input, store.get(input.id));
+  store.set(input.id, entry);
+  return entry;
 }
 
 export async function upsertParticipant(input: ParticipantUpsert) {
   const supabase = getSupabaseAdminClient();
 
   if (!supabase) {
-    const store = getMemoryStore();
-    const existing = store.get(input.id);
-    const entry: WallParticipant = {
-      id: input.id,
-      displayId: input.displayId,
-      displayName: input.displayName ?? existing?.displayName ?? null,
-      phase: input.phase ?? existing?.phase ?? "UNREGISTERED",
-      status: input.status ?? existing?.status ?? "MINING",
-      verdict: input.verdict ?? existing?.verdict ?? null,
-      output: input.output ?? existing?.output ?? 0,
-      isOperator: input.isOperator ?? existing?.isOperator ?? false,
-      joinedAt: existing?.joinedAt ?? Date.now(),
-      lastSeenAt: Date.now(),
-      photoUrl: input.photoUrl ?? existing?.photoUrl ?? null,
-      scores: input.scores ?? existing?.scores,
-      userRatingTier: input.userRatingTier ?? existing?.userRatingTier ?? null,
-      tierClickMultiplier: input.tierClickMultiplier ?? existing?.tierClickMultiplier ?? 1.0,
-      tierErrorRateFactor: input.tierErrorRateFactor ?? existing?.tierErrorRateFactor ?? 1.0,
-      leisureGame: input.leisureGame ?? existing?.leisureGame ?? null,
-      attackTokens: input.attackTokens ?? existing?.attackTokens ?? 0,
-      archivedAt: input.archivedAt ?? existing?.archivedAt ?? null,
-      isPermanent: input.isPermanent ?? existing?.isPermanent ?? false,
-      isBuilder: input.isBuilder ?? existing?.isBuilder ?? false,
-      builderRole: input.builderRole ?? existing?.builderRole ?? null,
-      engagementPoints: input.engagementPoints ?? existing?.engagementPoints ?? 0,
-      backendUnlocked: input.backendUnlocked ?? existing?.backendUnlocked ?? false,
-    };
-    store.set(input.id, entry);
-    return entry;
+    return upsertMemory(input);
   }
 
-  const existing = await supabase
-    .from("participants")
-    .select("joined_at, photo_url")
-    .eq("id", input.id)
-    .maybeSingle();
+  // v4 (2026-05-22): if Supabase is configured but unreachable (Docker off,
+  // network blip, etc.), fall through to the memory store instead of
+  // throwing. Keeps the wall + clients working in a single-process dev
+  // setup even when the DB layer is down.
+  let existing;
+  try {
+    existing = await supabase
+      .from("participants")
+      .select("joined_at, photo_url")
+      .eq("id", input.id)
+      .maybeSingle();
+  } catch (err) {
+    console.warn("[participants] Supabase unreachable on select, using memory store:", err);
+    markSupabaseDown();
+    return upsertMemory(input);
+  }
 
-  if (existing.error) throw existing.error;
+  if (existing.error) {
+    console.warn("[participants] Supabase select error, using memory store:", existing.error);
+    return upsertMemory(input);
+  }
 
   const photoUrl = await uploadPhoto(input.id, input.photoUrl ?? undefined);
   const now = new Date().toISOString();
@@ -238,13 +284,22 @@ export async function upsertParticipant(input: ParticipantUpsert) {
   if (input.isPermanent !== undefined) payload.is_permanent = input.isPermanent;
   if (input.engagementPoints !== undefined) payload.engagement_points = input.engagementPoints;
   if (input.backendUnlocked !== undefined) payload.backend_unlocked = input.backendUnlocked;
+  if (input.email !== undefined) payload.email = input.email;
+  if (input.originalText !== undefined) payload.original_text = input.originalText;
+  if (input.distilledText !== undefined) payload.distilled_text = input.distilledText;
 
-  const { data, error } = await supabase
-    .from("participants")
-    .upsert(payload, { onConflict: "id" })
-    .select(PARTICIPANT_SELECT)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from("participants")
+      .upsert(payload, { onConflict: "id" })
+      .select(PARTICIPANT_SELECT)
+      .single();
 
-  if (error) throw error;
-  return fromDb(data);
+    if (error) throw error;
+    return fromDb(data);
+  } catch (err) {
+    console.warn("[participants] Supabase unreachable on upsert, using memory store:", err);
+    markSupabaseDown();
+    return upsertMemory(input);
+  }
 }

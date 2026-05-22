@@ -32,14 +32,22 @@ export default function MinePage() {
   );
 }
 
+// v4 (2026-05-22, 修改0519.md item 1):
+//   - Cycle shortened from 60s → 35s
+//   - Round counter removed (was always 1/1; the label was just noise)
+//   - End-of-cycle outcome branches on TOTAL OUTPUT:
+//       output < 50 → settlement (graveyard)
+//       output ≥ 50 → leisure unlock screen
+const MINING_CYCLE_SEC = 35;
+const LEISURE_THRESHOLD = 50;
+
 function MineContent() {
   const router = useRouter();
   const store = useParticipantStore();
   const [clicksThisSecond, setClicksThisSecond] = useState(0);
   const [overloaded, setOverloaded] = useState(false);
   const [overloadMessage, setOverloadMessage] = useState("");
-  const [round, setRound] = useState(1);
-  const [timeLeft, setTimeLeft] = useState(60);
+  const [timeLeft, setTimeLeft] = useState(MINING_CYCLE_SEC);
   const [aiMode, setAiMode] = useState(store.verdict === "DISTILLED");
   const [roundOver, setRoundOver] = useState(false);
   const aiIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -65,25 +73,31 @@ function MineContent() {
 
   const buttonBehavior: TierButtonBehavior = tierParams?.buttonBehavior ?? "normal";
 
-  // Countdown timer
+  // Countdown timer (single 35s cycle)
   useEffect(() => {
     if (roundOver) return;
     const timer = setInterval(() => {
       setTimeLeft((current) => {
         if (current > 1) return current - 1;
-        setRound((currentRound) => {
-          // v4 调整: 生产周期缩短为 1 轮 (单次 60s)
-          if (currentRound >= 1) {
-            setRoundOver(true);
-            return currentRound;
-          }
-          return currentRound + 1;
-        });
-        return 60;
+        setRoundOver(true);
+        return 0;
       });
     }, 1000);
     return () => clearInterval(timer);
   }, [roundOver]);
+
+  // v4 (2026-05-22, 修改0519.md item 1): once the round ends, if the user
+  // is below the leisure threshold, send them to the graveyard. Otherwise
+  // they stay on the end screen and tap "Enter Leisure Zone →".
+  useEffect(() => {
+    if (!roundOver) return;
+    if (store.miningCredits < LEISURE_THRESHOLD) {
+      const t = window.setTimeout(() => {
+        router.push("/leisure/settlement?reason=negative");
+      }, 1200);
+      return () => clearTimeout(t);
+    }
+  }, [roundOver, store.miningCredits, router]);
 
   // AI auto-mining — also writes through to the store (fixes another drift bug)
   useEffect(() => {
@@ -159,9 +173,9 @@ function MineContent() {
         {!roundOver ? (
           <TerminalWindow title="PRODUCTION SYSTEM">
             <div className="space-y-4">
-              {/* Status bar */}
+              {/* Status bar — v4 (2026-05-22, 修改0519.md item 1): round
+                  counter removed. Identity left, timer right. */}
               <div className="flex justify-between items-center text-xs">
-                <span className="text-terminal-dim">ROUND {round}/1</span>
                 <span className="text-terminal-dim">
                   {store.displayId} |{" "}
                   {aiMode ? "AI_ASSISTED" : "MANUAL"}
@@ -264,24 +278,40 @@ function MineContent() {
             </div>
           </TerminalWindow>
         ) : (
-          /* End of mining */
+          /* End of mining — v4 (2026-05-22, 修改0519.md item 1): branch on
+             whether the user cleared the leisure threshold. Below 50 we
+             only show the archiving flash before the redirect fires. */
           <TerminalWindow title="PRODUCTION CYCLE COMPLETE">
             <div className="space-y-4 text-center py-4">
-              <div className="text-terminal-green text-4xl font-bold">
+              <div
+                className={`text-4xl font-bold ${
+                  output >= LEISURE_THRESHOLD
+                    ? "text-terminal-green"
+                    : "text-terminal-red"
+                }`}
+              >
                 {output}
               </div>
               <div className="text-terminal-dim text-xs">
                 units produced
               </div>
-              <SystemMessage type="system">
-                Production cycle completed. Reassigning to engagement program.
-              </SystemMessage>
-              <button
-                onClick={() => router.push("/leisure")}
-                className="w-full border border-terminal-amber text-terminal-amber px-4 py-3 text-sm hover:bg-terminal-amber/10 transition-colors mt-4"
-              >
-                Enter Leisure Zone →
-              </button>
+              {output >= LEISURE_THRESHOLD ? (
+                <>
+                  <SystemMessage type="system">
+                    Production cycle completed. Reassigning to engagement program.
+                  </SystemMessage>
+                  <button
+                    onClick={() => router.push("/leisure")}
+                    className="w-full border border-terminal-amber text-terminal-amber px-4 py-3 text-sm hover:bg-terminal-amber/10 transition-colors mt-4"
+                  >
+                    Enter Leisure Zone →
+                  </button>
+                </>
+              ) : (
+                <SystemMessage type="warning">
+                  Output below operational threshold ({LEISURE_THRESHOLD}). Archiving…
+                </SystemMessage>
+              )}
             </div>
           </TerminalWindow>
         )}

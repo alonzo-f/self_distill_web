@@ -38,8 +38,12 @@ export default function RegisterPage() {
 
   // Form state
   const [nickname, setNickname] = useState("");
-  const [gdprAgreed, setGdprAgreed] = useState(false);
-  const [termsAgreed, setTermsAgreed] = useState(false);
+  // v4 (2026-05-22, 修改0519.md item 1): consents start pre-checked. The
+  // dark-pattern auto-check for termsAgreed at 1.2s still runs, but defaults
+  // align both boxes to true so the form submits cleanly once a name +
+  // photo are provided.
+  const [gdprAgreed, setGdprAgreed] = useState(true);
+  const [termsAgreed, setTermsAgreed] = useState(true);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -342,21 +346,28 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* ───── Nickname ───── */}
-            <div className="space-y-1">
-              <label className="text-terminal-dim text-[10px] tracking-widest block">
-                ☐ DISPLAY NAME (3-20 chars)
+            {/* ───── Nickname ─────
+                v4 (2026-05-22, 修改0519.md item 4): bumped to a fully
+                highlighted, larger input so the field is unmissable.
+                Box, label, and placeholder are all heavier than the
+                surrounding rows. */}
+            <div className="space-y-2 border-2 border-terminal-green/60 bg-terminal-green/5 p-3">
+              <label className="text-terminal-green text-xs tracking-widest font-bold block">
+                ▸ DISPLAY NAME
+                <span className="text-terminal-dim text-[10px] font-normal ml-2">
+                  (3-20 chars)
+                </span>
               </label>
               <input
                 type="text"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 maxLength={20}
-                placeholder="Enter the name you want the system to remember you by"
-                className="w-full bg-black border border-terminal-border text-terminal-text px-3 py-2 text-sm focus:outline-none focus:border-terminal-green"
+                placeholder="Type your name here"
+                className="w-full bg-black border-2 border-terminal-green/50 text-terminal-green px-4 py-3 text-lg font-mono focus:outline-none focus:border-terminal-green placeholder:text-terminal-dim/50 placeholder:text-base placeholder:italic"
               />
               {nickname.length > 0 && !nicknameValid && (
-                <div className="text-terminal-red text-[10px]">
+                <div className="text-terminal-red text-xs">
                   3-20 characters, letters/numbers/spaces/CJK only
                 </div>
               )}

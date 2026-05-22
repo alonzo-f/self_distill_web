@@ -3,19 +3,19 @@
 // v4 projection wall · Quadrant B · PARTICIPANT FIELD (top-left).
 // Reference: docs/v4-migration-plan.md Phase 8 + Phase 9 (kill animation).
 //
-// Each active participant becomes a small cluster of glyphs anchored around
-// the centroid of their photo thumbnail. Operator + current-user clusters
-// get halos.
+// v4 (2026-05-22, 修改0519.md item 1): the glyph-particle aura around each
+// photo was hard to read on the projector. Switched to a clean photo-tile
+// grid — same metadata (operator halo, kill animation, label) just without
+// the symbolic cluster of ◉ / ◎ glyphs that orbited it.
 //
-// v4 (user-driven update): any attack is now a KILL.
-//   - target photo desaturates to grayscale during the visual window
-//   - cluster shakes (cluster-shake keyframe) + red ring pulses (ring-pulse)
-//   - red beam removed per user request
+// Previous behaviour preserved:
+//   - Operator + current-user clusters get halos
+//   - Any attack is a KILL: photo desaturates, cluster shakes, red ring
+//     pulses around it. Red beam stays removed.
 //   - "doomed" targets remain visible during the animation TTL even after
-//     their DB row flips to status=ARCHIVED, so the kill plays out instead
-//     of the cluster vanishing instantly when participants refetch.
+//     their DB row flips to status=ARCHIVED.
 
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type { WallParticipant } from "@/lib/participants/types";
 
 export interface AttackEvent {
@@ -33,23 +33,7 @@ interface QuadrantB_ParticlesProps {
   activeAttacks?: AttackEvent[];
 }
 
-const PARTICLES_PER_CLUSTER = 8;
 const MAX_VISIBLE = 30;
-
-function symbolFor(p: WallParticipant): string {
-  if (p.status === "LEISURE") return "░";
-  if (p.status === "OPERATING") return "★";
-  if (p.verdict === "DISTILLED") return "◉";
-  return "◎";
-}
-
-function colorFor(p: WallParticipant, isMe: boolean): string {
-  if (isMe) return "text-terminal-green";
-  if (p.isOperator) return "text-amber-300";
-  if (p.status === "LEISURE") return "text-terminal-dim/40";
-  if (p.verdict === "DISTILLED") return "text-terminal-green/80";
-  return "text-terminal-text/70";
-}
 
 export function QuadrantB_Particles({
   participants,
@@ -72,9 +56,6 @@ export function QuadrantB_Particles({
     )
     .slice(0, MAX_VISIBLE);
 
-  // Ref map kept for future use (e.g. tooltip on hover). Beam rendering removed.
-  const clusterRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
-
   return (
     <Panel label="PARTICIPANT FIELD">
       {visible.length === 0 ? (
@@ -83,17 +64,13 @@ export function QuadrantB_Particles({
         </div>
       ) : (
         <div className="relative h-full">
-          <div className="grid grid-cols-5 sm:grid-cols-6 gap-3">
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4">
             {visible.map((p) => (
-              <ParticleCluster
+              <ParticipantTile
                 key={p.id}
                 participant={p}
                 isMe={p.displayId === currentUserDisplayId}
                 isTargeted={doomedDisplayIds.has(p.displayId)}
-                refSetter={(el) => {
-                  if (el) clusterRefs.current.set(p.displayId, el);
-                  else clusterRefs.current.delete(p.displayId);
-                }}
               />
             ))}
           </div>
@@ -103,58 +80,38 @@ export function QuadrantB_Particles({
   );
 }
 
-function ParticleCluster({
+/**
+ * v4 (2026-05-22): a single participant on the wall is now just their
+ * photo + DisplayID label. No symbol orbit. Operator / current-user gets
+ * a colored border halo; kill targets desaturate + shake with a red ring.
+ */
+function ParticipantTile({
   participant,
   isMe,
   isTargeted,
-  refSetter,
 }: {
   participant: WallParticipant;
   isMe: boolean;
   isTargeted: boolean;
-  refSetter: (el: HTMLDivElement | null) => void;
 }) {
-  // Deterministic random offsets so a given user's cluster shape is stable
-  // across re-renders (avoid jitter when realtime updates fire).
-  const offsets = useMemo(() => {
-    return Array.from({ length: PARTICLES_PER_CLUSTER }, (_, i) => {
-      const seed = hashSeed(`${participant.id}-${i}`);
-      const angle = (seed % 360) * (Math.PI / 180);
-      const radius = 10 + ((seed >> 4) % 14);
-      return {
-        dx: Math.cos(angle) * radius,
-        dy: Math.sin(angle) * radius,
-      };
-    });
-  }, [participant.id]);
-
-  const sym = symbolFor(participant);
-  const colorClass = colorFor(participant, isMe);
-  const showHalo = participant.isOperator || isMe;
+  const borderClass = isTargeted
+    ? "border-terminal-red border-2"
+    : isMe
+      ? "border-terminal-green border-2"
+      : participant.isOperator
+        ? "border-amber-300 border-2"
+        : "border-terminal-dim/40 border";
 
   return (
     <div
-      ref={refSetter}
-      className={`relative aspect-square flex items-center justify-center ${
+      className={`relative aspect-square flex flex-col items-center ${
         isTargeted ? "cluster-targeted" : ""
       }`}
     >
-      {/* Halo for operators / current user */}
-      {showHalo && !isTargeted && (
-        <div
-          className={`absolute inset-1 rounded-full border ${
-            isMe ? "border-terminal-green/70" : "border-amber-300/70"
-          } animate-pulse`}
-        />
-      )}
-      {/* Red attack halo when targeted */}
-      {isTargeted && (
-        <div className="absolute inset-0 rounded-full border-2 border-terminal-red attack-target-ring" />
-      )}
-      {/* Photo nucleus */}
+      {/* Photo tile */}
       <div
-        className={`relative z-10 w-7 h-7 border overflow-hidden ${
-          isTargeted ? "border-terminal-red" : "border-terminal-dim/40"
+        className={`relative w-full aspect-square overflow-hidden ${borderClass} ${
+          (participant.isOperator || isMe) && !isTargeted ? "animate-pulse" : ""
         }`}
       >
         {participant.photoUrl ? (
@@ -165,31 +122,28 @@ function ParticleCluster({
             className="w-full h-full object-cover transition-[filter] duration-300"
             style={{
               transform: "scaleX(-1)",
-              // v4 (user-driven update): kill state — photo desaturates to B&W
+              // Kill state — photo desaturates to B&W
               filter: isTargeted
                 ? "grayscale(1) contrast(1.1) brightness(0.55)"
                 : undefined,
             }}
           />
         ) : (
-          <div className="w-full h-full bg-terminal-dim/10" />
+          <div className="w-full h-full bg-terminal-dim/10 flex items-center justify-center text-terminal-dim/40 text-[10px] font-mono">
+            no photo
+          </div>
+        )}
+        {/* v4 (2026-05-22, 修改0519.md item 7): red flash 3x when targeted */}
+        {isTargeted && (
+          <>
+            <div className="absolute inset-0 bg-terminal-red/60 mix-blend-overlay attack-red-flash pointer-events-none" />
+            <div className="absolute inset-0 border-2 border-terminal-red attack-target-ring pointer-events-none" />
+          </>
         )}
       </div>
-      {/* Glyph particles around the photo */}
-      {offsets.map((o, i) => (
-        <span
-          key={i}
-          className={`absolute text-[10px] pointer-events-none ${colorClass}`}
-          style={{
-            transform: `translate(${o.dx}px, ${o.dy}px)`,
-            opacity: 0.6 + ((i % 4) * 0.1),
-          }}
-        >
-          {sym}
-        </span>
-      ))}
+
       {/* Label below */}
-      <div className="absolute -bottom-3.5 left-0 right-0 text-center text-terminal-dim text-[8px] font-mono truncate">
+      <div className="mt-1 text-center text-terminal-dim text-[9px] font-mono truncate w-full">
         {participant.displayId}
       </div>
 
@@ -208,24 +162,33 @@ function ParticleCluster({
           25% { transform: scale(1); opacity: 1; }
           100% { transform: scale(1.35); opacity: 0; }
         }
+        /* v4 (2026-05-22, 修改0519.md item 7): three discrete red flashes
+           over ~1.5s. Each flash: 0→1→0 across roughly 1/6th of the
+           timeline, with a quiet beat between flashes. */
+        @keyframes red-flash {
+          0%   { opacity: 0; }
+          5%   { opacity: 1; }
+          15%  { opacity: 0; }
+          30%  { opacity: 0; }
+          35%  { opacity: 1; }
+          45%  { opacity: 0; }
+          60%  { opacity: 0; }
+          65%  { opacity: 1; }
+          75%  { opacity: 0; }
+          100% { opacity: 0; }
+        }
         :global(.cluster-targeted) {
           animation: cluster-shake 0.6s ease-in-out 2;
         }
         :global(.attack-target-ring) {
           animation: ring-pulse 0.8s ease-out;
         }
+        :global(.attack-red-flash) {
+          animation: red-flash 1.5s ease-in-out;
+        }
       `}</style>
     </div>
   );
-}
-
-function hashSeed(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h);
 }
 
 function Panel({ label, children }: { label: string; children: React.ReactNode }) {

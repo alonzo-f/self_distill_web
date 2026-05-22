@@ -10,7 +10,8 @@
 // Decrements attacker.attack_tokens. Refuses when tokens are exhausted.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSupabaseAdminClient, markSupabaseDown } from "@/lib/supabase/admin";
+import { listParticipants, upsertParticipant } from "@/lib/participants/repository";
 import type { BackdoorAttackType } from "@/types";
 
 interface AttackBody {
@@ -37,22 +38,42 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
-    return NextResponse.json({ ok: true, fallback: true });
+    // v4 (2026-05-22, 修改0519.md item 6+7): in-memory fallback so attacks
+    // work end-to-end with no DB. Marks the target archived, decrements
+    // attacker's tokens, returns enough info for the client to play the
+    // kill animation on the wall.
+    return await memoryAttack(body);
   }
 
-  // Load both participants in one round trip
-  const { data: rows, error } = await supabase
-    .from("participants")
-    .select("id, mining_credits, attack_tokens, output, is_permanent, display_id")
-    .in("id", [body.attackerId, body.targetId]);
-
-  if (error) {
-    console.error("attack lookup error:", error);
-    return NextResponse.json({ error: "Lookup failed" }, { status: 500 });
+  // Load both participants in one round trip.
+  // v4 (2026-05-22): if Supabase is configured but unreachable (e.g. local
+  // Docker down), this throws ECONNREFUSED. Catch and fall through to the
+  // memory store so the attack still completes and the user redirects to
+  // /wall as expected.
+  type Row = {
+    id: string;
+    mining_credits: number | null;
+    attack_tokens: number | null;
+    output: number | null;
+    is_permanent: boolean | null;
+    display_id: string | null;
+  };
+  let rows: Row[] = [];
+  try {
+    const result = await supabase
+      .from("participants")
+      .select("id, mining_credits, attack_tokens, output, is_permanent, display_id")
+      .in("id", [body.attackerId, body.targetId]);
+    if (result.error) throw result.error;
+    rows = (result.data ?? []) as Row[];
+  } catch (err) {
+    console.warn("[attack] Supabase unreachable on lookup, using memory store:", err);
+    markSupabaseDown();
+    return await memoryAttack(body);
   }
 
-  const attacker = rows?.find((r) => r.id === body.attackerId);
-  const target = rows?.find((r) => r.id === body.targetId);
+  const attacker = rows.find((r) => r.id === body.attackerId);
+  const target = rows.find((r) => r.id === body.targetId);
   if (!attacker || !target) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -128,5 +149,66 @@ export async function POST(req: NextRequest) {
     actionType: body.actionType,
     amount,
     remainingTokens: Math.max(0, (attacker.attack_tokens ?? 0) - 1),
+  });
+}
+
+/**
+ * v4 (2026-05-22): in-memory fallback for the attack endpoint when Supabase
+ * is unavailable. Mirrors the SIPHON / SWAP / CORRUPT / archive logic above
+ * but writes through the shared memory store so the wall sees the kill on
+ * its next poll.
+ */
+async function memoryAttack(body: AttackBody) {
+  const all = await listParticipants();
+  const attacker = all.find((p) => p.id === body.attackerId);
+  const target = all.find((p) => p.id === body.targetId);
+
+  if (!attacker || !target) {
+    // Attacker may not be in memory if their session lived only on the
+    // client. Still allow the attack to register against the target so
+    // the wall plays the kill animation.
+    if (!target) {
+      return NextResponse.json({ error: "Target not found" }, { status: 404 });
+    }
+  }
+  if (target.isPermanent) {
+    return NextResponse.json({ error: "Cannot attack permanent participant" }, { status: 403 });
+  }
+
+  const amount = body.amount ?? 50;
+
+  // Apply side-effects against the target row.
+  await upsertParticipant({
+    id: target.id,
+    displayId: target.displayId,
+    displayName: target.displayName ?? null,
+    status: "ARCHIVED",
+    phase: "GHOST",
+    archivedAt: Date.now(),
+    // SWAP: target loses output (transferred to attacker below)
+    output: body.actionType === "SWAP" ? attacker?.output ?? 0 : target.output,
+  });
+
+  if (attacker) {
+    const patch: Record<string, unknown> = {
+      id: attacker.id,
+      displayId: attacker.displayId,
+      displayName: attacker.displayName ?? null,
+      attackTokens: Math.max(0, (attacker.attackTokens ?? 1) - 1),
+    };
+    if (body.actionType === "SWAP") {
+      patch.output = target.output ?? 0;
+    }
+    await upsertParticipant(patch as Parameters<typeof upsertParticipant>[0]);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    fallback: true,
+    attackerDisplayId: attacker?.displayId ?? null,
+    targetDisplayId: target.displayId,
+    actionType: body.actionType,
+    amount,
+    remainingTokens: Math.max(0, (attacker?.attackTokens ?? 1) - 1),
   });
 }
