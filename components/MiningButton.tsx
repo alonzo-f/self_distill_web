@@ -107,6 +107,9 @@ export function MiningButton({
       disabled={disabled || pending}
       style={transformStyle}
       className={`${baseClass} ${stateClass} ${transitionClass}`}
+      // v4 (2026-05-22): /mine handles its own tick/error/warning SFX
+      // per click — suppress the GlobalClickSfx so we don't double up.
+      data-no-sfx
     >
       {displayLabel}
     </button>

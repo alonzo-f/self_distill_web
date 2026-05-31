@@ -19,6 +19,7 @@ import { useParticipantStore } from "@/stores/participant-store";
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { allocateGame, GAME_ROUTES } from "@/lib/leisure-allocator";
+import { playLeisureUnlockSfx, unlockAudio } from "@/lib/audio/eight-bit";
 
 const LEISURE_UNLOCK_THRESHOLD = 50;
 
@@ -59,6 +60,10 @@ function LeisureDispatcher() {
 
     if (!store.leisureGame) {
       store.setLeisureGame(game);
+      // v4 (2026-05-22): first-entry audio cue. Only on the initial
+      // allocation, not on re-entry.
+      void unlockAudio();
+      playLeisureUnlockSfx();
     }
     if (store.leisureCredits === 0 && store.miningCredits > 0) {
       store.setParticipant({ leisureCredits: initialCredits });

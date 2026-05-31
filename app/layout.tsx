@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { DebugBar } from "@/components/DebugBar";
+import { GlobalClickSfx } from "@/components/GlobalClickSfx";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,6 +40,10 @@ export default function RootLayout({
         className="min-h-full bg-terminal-bg text-terminal-text font-mono scanline-overlay"
       >
         <DebugBar />
+        {/* v4 (2026-05-22): global button-press SFX. Listens to pointerdown
+            on document and fires playClickSfx for any <button> that isn't
+            disabled or marked data-no-sfx. */}
+        <GlobalClickSfx />
         <main className="min-h-screen">{children}</main>
       </body>
     </html>

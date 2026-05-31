@@ -14,6 +14,11 @@ import { determineVerdict } from "@/lib/score-transform";
 import { RouteGuard } from "@/components/RouteGuard";
 import { DistillationAnimation } from "@/components/DistillationAnimation";
 import { loadSession, saveSession, advancePhase } from "@/lib/local-storage";
+import {
+  playDistilledRevealSfx,
+  playVesselPreservedSfx,
+  unlockAudio,
+} from "@/lib/audio/eight-bit";
 
 type Phase = "analyzing" | "reveal";
 
@@ -73,9 +78,17 @@ function VerdictContent() {
     if (!scores) return;
     setVerdict(verdict);
     setStatus("BENCHMARKED");
-    const timer = setTimeout(() => setPhase("reveal"), 3500);
+    const timer = setTimeout(() => {
+      setPhase("reveal");
+      // v4 (2026-05-22): audio cue at the moment of reveal. Different
+      // SFX per verdict — triumphant arpeggio for DISTILLED, soft
+      // descending minor for VESSEL_PRESERVED.
+      void unlockAudio();
+      if (isDistilled) playDistilledRevealSfx();
+      else playVesselPreservedSfx();
+    }, 3500);
     return () => clearTimeout(timer);
-  }, [scores, setStatus, setVerdict, verdict]);
+  }, [scores, setStatus, setVerdict, verdict, isDistilled]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

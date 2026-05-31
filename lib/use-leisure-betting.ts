@@ -17,6 +17,12 @@ import {
 } from "@/lib/leisure-allocator";
 import type { LeisureGame } from "@/types";
 import { loadLeisureStats, recordBet } from "@/lib/leisure-stats";
+import {
+  playBetSfx,
+  playWinSfx,
+  playLossSfx,
+  unlockAudio,
+} from "@/lib/audio/eight-bit";
 
 export interface BetResult {
   ok: boolean;
@@ -99,6 +105,15 @@ export function useLeisureBetting(game: LeisureGame): UseLeisureBetting {
         wager,
         outcomeDelta: finalDelta,
       });
+
+      // v4 (2026-05-22): audio cues — short bet "coin drop", then a
+      // win/loss tone roughly 250ms later so they don't clip each other.
+      void unlockAudio();
+      playBetSfx();
+      window.setTimeout(() => {
+        if (finalDelta > 0) playWinSfx();
+        else if (finalDelta < 0) playLossSfx();
+      }, 280);
 
       // v4: negative or zero balance → archive flow
       if (newBalance <= 0) {

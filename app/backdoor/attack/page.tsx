@@ -14,6 +14,7 @@ import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import type { WallParticipant } from "@/lib/participants/types";
 import type { BackdoorAttackType } from "@/types";
+import { playAttackSfx, unlockAudio } from "@/lib/audio/eight-bit";
 
 const ACTIONS: { key: BackdoorAttackType; label: string; description: string }[] = [
   { key: "SIPHON",  label: "SIPHON",  description: "Transfer 50 credits from target → you" },
@@ -83,6 +84,11 @@ function AttackContent() {
     if (!selected) return;
     if (store.attackTokens <= 0) return;
     setBusy(true);
+    // v4 (2026-05-22): audio cue for the attack — fires immediately on
+    // click so the SFX lines up with the button press, not the network
+    // round-trip.
+    void unlockAudio();
+    playAttackSfx();
     try {
       const res = await fetch("/api/backdoor/attack", {
         method: "POST",
@@ -224,6 +230,9 @@ function AttackContent() {
                   onClick={executeAttack}
                   disabled={!selected || busy}
                   className="w-full border border-terminal-red text-terminal-red px-4 py-3 text-sm hover:bg-terminal-red/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  // v4 (2026-05-22): plays its own attack SFX — suppress
+                  // the generic click tick so the kick lands clean.
+                  data-no-sfx
                 >
                   {busy ? "Executing..." : `⚔ Execute ${actionType}`}
                 </button>

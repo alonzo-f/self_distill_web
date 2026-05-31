@@ -10,6 +10,7 @@ import {
 import { useParticipantStore } from "@/stores/participant-store";
 import { RouteGuard } from "@/components/RouteGuard";
 import { getReferenceAnswer } from "@/lib/data/expression-prompts";
+import { playDistillReadySfx, unlockAudio } from "@/lib/audio/eight-bit";
 import {
   loadSession,
   saveSession,
@@ -105,6 +106,9 @@ function DistillContent() {
 
     setIsStreaming(false);
     setStreamComplete(true);
+    // v4 (2026-05-22): audio cue when the distilled output finishes streaming
+    void unlockAudio();
+    playDistillReadySfx();
     setTimeout(() => setPhase("comparison"), 800);
   }, [store, originalText]);
 

@@ -28,6 +28,7 @@ import {
   setSnapshot,
 } from "@/lib/local-storage";
 import { getRatingTier, TIER_PARAMS } from "@/lib/score-transform";
+import { playWarningSfx, unlockAudio } from "@/lib/audio/eight-bit";
 
 type Phase = "rate_ai" | "warning_shown" | "processing" | "ai_rates_you";
 
@@ -167,9 +168,12 @@ function BenchmarkContent() {
   );
 
   const handleRateSubmit = useCallback(() => {
+    void unlockAudio();
     const tier = getRatingTier(userRating);
     if (TIER_PARAMS[tier].showWarning) {
       setPhase("warning_shown");
+      // v4 (2026-05-22): audio cue for the low-rating warning
+      playWarningSfx();
     } else {
       commitTier(userRating);
     }

@@ -2,10 +2,13 @@
 
 // v4 PSA video player.
 // Reference: docs/v4-migration-plan.md Phase 1; project_v4 III. 背景故事
-// - Auto-plays the 55-60s PSA on mount (muted — required for mobile autoplay)
+// - Auto-plays the 55-60s PSA on mount.
+// - Tries unmuted autoplay first; if the browser blocks it (most do on a
+//   cold visit), retries muted and surfaces a "🔊 Tap for sound" button
+//   so the user can unmute with a single tap.
 // - Auto-advances at video end OR 60s timeout OR tap-to-skip
 // - [Skip ▶] button surfaces after 1.5s
-// - When no /psa.mp4 exists OR autoplay blocked, falls back to placeholder
+// - When no /psa.mp4 exists OR autoplay blocked entirely, falls back to placeholder
 // - Tap anywhere on the player also triggers skip once skip is available
 
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +26,10 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
   const [elapsed, setElapsed] = useState(0);
   const [videoFailed, setVideoFailed] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  // v4 (2026-05-22): the video may end up muted because the browser refused
+  // unmuted autoplay. We track that here so a "Tap for sound" CTA can let
+  // the user unmute with a single user-gesture click.
+  const [muted, setMuted] = useState(false);
   const completedRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -53,21 +60,56 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Detect autoplay block so we can show the placeholder + a clear tap-cta.
+  // v4 (2026-05-22): start unmuted; if the browser refuses (most do on
+  // a cold visit), fall back to muted autoplay and surface a "Tap for
+  // sound" button. This way desktop users get audio immediately when
+  // they can, and mobile users still get the video to play at all.
   useEffect(() => {
     if (!videoSrc) return;
     const v = videoRef.current;
     if (!v) return;
+
+    let cancelled = false;
     const tryPlay = async () => {
+      // First attempt: unmuted.
+      v.muted = false;
+      try {
+        await v.play();
+        if (!cancelled) setMuted(false);
+        return;
+      } catch {
+        /* fall through to muted attempt */
+      }
+      if (cancelled) return;
+      // Second attempt: muted autoplay (the mobile-safe path).
+      v.muted = true;
+      if (!cancelled) setMuted(true);
       try {
         await v.play();
       } catch {
-        // External browser API: refused autoplay → flip state once.
-        setAutoplayBlocked(true);
+        // Even muted autoplay refused → show the fallback placeholder.
+        if (!cancelled) setAutoplayBlocked(true);
       }
     };
     void tryPlay();
+    return () => {
+      cancelled = true;
+    };
   }, [videoSrc]);
+
+  /** User-gesture tap to unmute. Browsers accept this because it's a click. */
+  const handleUnmute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = false;
+    setMuted(false);
+    // If the video paused for any reason, kick it again. This call is a
+    // user gesture, so it's allowed even with sound.
+    void v.play().catch(() => {
+      /* if it really won't play with sound, leave it as-is and trust
+         the user can still hit Skip ▶ */
+    });
+  };
 
   const showFallback = !videoSrc || videoFailed || autoplayBlocked;
 
@@ -89,9 +131,10 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
           src={videoSrc}
           autoPlay
           playsInline
-          // Mobile browsers require `muted` for inline autoplay. We honour it
-          // here — losing audio is the price of guaranteed start.
-          muted
+          // v4 (2026-05-22): no hard-coded `muted` here. The play-attempt
+          // effect tries unmuted first and only falls back to muted if
+          // the browser blocks it. `defaultMuted` set to false signals
+          // intent — the controlled `muted` state then drives it.
           onEnded={complete}
           onError={() => setVideoFailed(true)}
           className="max-h-screen max-w-screen object-contain pointer-events-none"
@@ -105,6 +148,22 @@ export function PSAPlayer({ videoSrc, onComplete }: PSAPlayerProps) {
       <div className="absolute top-3 right-4 text-terminal-dim font-mono text-[10px] pointer-events-none">
         {String(elapsed).padStart(2, "0")} / 60
       </div>
+
+      {/* v4 (2026-05-22): tap-for-sound CTA — appears whenever the player
+          is currently muted (most cold visits), disappears once unmuted.
+          stopPropagation so it doesn't also trigger the skip-on-tap. */}
+      {muted && !showFallback && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleUnmute();
+          }}
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-10 border-2 border-terminal-green bg-terminal-green/15 text-terminal-green font-mono text-sm px-4 py-2 hover:bg-terminal-green/25 active:bg-terminal-green/35 transition-colors animate-pulse"
+          aria-label="Unmute"
+        >
+          🔊 Tap for sound
+        </button>
+      )}
 
       {/* Skip button — large, top-right of the playable area, safe-area aware */}
       {skipVisible && (

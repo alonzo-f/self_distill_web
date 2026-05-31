@@ -19,6 +19,7 @@ import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { BackdoorAnimation } from "@/components/BackdoorAnimation";
 import { EmailCapture } from "@/components/EmailCapture";
+import { playBackdoorOpenSfx, unlockAudio } from "@/lib/audio/eight-bit";
 import {
   loadSession,
   saveSession,
@@ -56,7 +57,15 @@ function BackdoorContent() {
     // v4 调整: gate 改用 leisureCredits >= 100 (与 Hub 一致)
     if (store.leisureCredits < 100 && !store.backendUnlocked) {
       router.replace("/hub");
+      return;
     }
+    // v4 (2026-05-22): play the ceremony SFX once we've actually entered
+    // the backdoor page (gate passed). Audio context may still be locked
+    // here because the user navigated via in-app router rather than a
+    // tap on this page — unlockAudio() preps it; if it fails, the SFX
+    // simply doesn't fire, which is acceptable.
+    void unlockAudio();
+    playBackdoorOpenSfx();
   }, [store.leisureCredits, store.backendUnlocked, router]);
 
   // On animation complete, commit BACKDOOR_FOUND + grant attack tokens

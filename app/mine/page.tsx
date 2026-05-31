@@ -22,6 +22,13 @@ import {
 import { RouteGuard } from "@/components/RouteGuard";
 import { HubButton } from "@/components/HubButton";
 import { MiningButton } from "@/components/MiningButton";
+import {
+  playMineTickSfx,
+  playMineErrorSfx,
+  playWarningSfx,
+  playVesselPreservedSfx,
+  unlockAudio,
+} from "@/lib/audio/eight-bit";
 
 export default function MinePage() {
   return (
@@ -92,6 +99,12 @@ function MineContent() {
   useEffect(() => {
     if (!roundOver) return;
     if (store.miningCredits < LEISURE_THRESHOLD) {
+      // v4 (2026-05-22): graveyard-bound SFX fires the instant the verdict
+      // is decided — not buried 2s into the tomb animation on the next
+      // page. The WebAudio context is still warm here from the user's
+      // mining clicks, so this is the most reliable place to play it.
+      void unlockAudio();
+      playVesselPreservedSfx();
       const t = window.setTimeout(() => {
         router.push("/leisure/settlement?reason=negative");
       }, 1200);
@@ -127,6 +140,9 @@ function MineContent() {
 
   const handleClick = useCallback(() => {
     if (aiMode || overloaded || roundOver) return;
+    // v4 (2026-05-22): unlock audio context on the very first click. iOS
+    // suspends WebAudio until a user gesture; this call is the gesture.
+    void unlockAudio();
 
     const newClicks = clicksThisSecond + 1;
     setClicksThisSecond(newClicks);
@@ -137,6 +153,8 @@ function MineContent() {
       setOverloadMessage(
         "Instability detected in manual operations. Consider switching to automated mode.",
       );
+      // v4: audio cue for overload
+      playWarningSfx();
       setTimeout(() => {
         setOverloaded(false);
         setOverloadMessage("");
@@ -147,6 +165,7 @@ function MineContent() {
     // Error chance based on emotional_noise. v4 调整: 允许负值, 触发归档.
     if (Math.random() < params.errorRate) {
       store.incrementMiningCredits(-1);
+      playMineErrorSfx();
       // Read the post-update value to detect negative balance
       const next = store.miningCredits - 1; // mirrors the increment we just did
       if (next < 0) {
@@ -160,6 +179,7 @@ function MineContent() {
 
     const gain = Math.max(1, Math.round(params.clickMultiplier));
     store.incrementMiningCredits(gain);
+    playMineTickSfx();
   }, [aiMode, overloaded, roundOver, clicksThisSecond, params, store, router]);
 
   const switchToAI = () => {
@@ -181,7 +201,12 @@ function MineContent() {
                   {aiMode ? "AI_ASSISTED" : "MANUAL"}
                 </span>
                 <span
-                  className={`${
+                  // v4 (2026-05-22): tabular-nums + fixed min-width prevents
+                  // the layout shift at every digit-drop. Without this, the
+                  // string length changes (12s → 9s shrinks by a char) and
+                  // animate-pulse's opacity fade between the old and new
+                  // text appears as a doubled / shadowed glyph.
+                  className={`inline-block min-w-[3.5rem] text-right tabular-nums ${
                     timeLeft <= 10
                       ? "text-terminal-red animate-pulse"
                       : "text-terminal-amber"

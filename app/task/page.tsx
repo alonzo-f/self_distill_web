@@ -20,6 +20,7 @@ import {
 } from "@/lib/data/expression-prompts";
 import type { ExpressionPrompt } from "@/types";
 import { RouteGuard } from "@/components/RouteGuard";
+import { playSubmitSfx, unlockAudio } from "@/lib/audio/eight-bit";
 import {
   loadSession,
   saveSession,
@@ -91,6 +92,9 @@ function TaskContent() {
     if (submitted) return;
     if (countWords(text) < WORD_LIMIT_MIN) return;
     setSubmitted(true);
+    // v4 (2026-05-22): audio cue on successful submit
+    void unlockAudio();
+    playSubmitSfx();
 
     // v4: persist the actual prompt so /distill + /benchmark can pass it to the AI.
     store.setParticipant({
