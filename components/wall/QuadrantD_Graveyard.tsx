@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import type { GraveyardEntry } from "@/lib/participants/types";
+import { builderAvatar } from "@/lib/builders";
 
 const POLL_INTERVAL_MS = 30_000;
 const MAX_VISIBLE = 12;
@@ -69,14 +70,36 @@ export function QuadrantD_Graveyard() {
         {builders.length > 0 && (
           <>
             <div className="border-t border-terminal-border/40 my-1.5" />
-            {builders.map((b, i) => (
-              <Row key={`b-${i}`}>
-                <span className="text-amber-300/90 font-bold tracking-widest">
-                  {b.displayName}
-                </span>
-                <span className="text-amber-300/60 text-[9px]">∞</span>
-              </Row>
-            ))}
+            {builders.map((b, i) => {
+              const avatar = builderAvatar(b.displayName);
+              return (
+                <Row key={`b-${i}`}>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {avatar && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatar}
+                        alt={b.displayName}
+                        className="w-4 h-4 rounded-sm object-cover border border-amber-300/50 shrink-0"
+                        onError={(e) => {
+                          const el = e.currentTarget;
+                          // .png missing? try .jpg once, else hide.
+                          if (el.src.endsWith(".png")) {
+                            el.src = el.src.replace(/\.png$/, ".jpg");
+                          } else {
+                            el.style.display = "none";
+                          }
+                        }}
+                      />
+                    )}
+                    <span className="text-amber-300/90 font-bold tracking-widest truncate">
+                      {b.displayName}
+                    </span>
+                  </span>
+                  <span className="text-amber-300/60 text-[9px]">∞</span>
+                </Row>
+              );
+            })}
           </>
         )}
       </div>

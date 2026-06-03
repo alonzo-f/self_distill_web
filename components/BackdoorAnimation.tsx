@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { builderAvatar } from "@/lib/builders";
 
 interface BackdoorAnimationProps {
   photoUrl: string | null;
@@ -85,23 +86,45 @@ export function BackdoorAnimation({
 
       {/* Foundation row (always visible) */}
       <div className="absolute bottom-3 left-0 right-0 flex justify-center items-end gap-6">
-        {builderRoles.map((b) => (
-          <div
-            key={b.id}
-            className={`flex flex-col items-center ${
-              stage === "merge" || stage === "text" || stage === "done"
-                ? "animate-pulse"
-                : ""
-            }`}
-          >
-            <div className="w-16 h-16 border-2 border-amber-300/60 bg-amber-300/10 flex items-center justify-center text-amber-300/80 text-[10px] font-bold">
-              {b.id}
+        {builderRoles.map((b) => {
+          const avatar = builderAvatar(b.id);
+          return (
+            <div
+              key={b.id}
+              className={`flex flex-col items-center ${
+                stage === "merge" || stage === "text" || stage === "done"
+                  ? "animate-pulse"
+                  : ""
+              }`}
+            >
+              <div className="w-16 h-16 border-2 border-amber-300/60 bg-amber-300/10 overflow-hidden flex items-center justify-center text-amber-300/80 text-[10px] font-bold">
+                {avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={avatar}
+                    alt={b.id}
+                    className="w-full h-full object-cover sepia saturate-150 hue-rotate-[5deg]"
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      // .png missing? try .jpg once, else fall back to ID text.
+                      if (el.src.endsWith(".png")) {
+                        el.src = el.src.replace(/\.png$/, ".jpg");
+                      } else {
+                        el.style.display = "none";
+                        if (el.parentElement) el.parentElement.textContent = b.id;
+                      }
+                    }}
+                  />
+                ) : (
+                  b.id
+                )}
+              </div>
+              <div className="text-amber-300/60 text-[9px] font-mono mt-1">
+                {b.role}
+              </div>
             </div>
-            <div className="text-amber-300/60 text-[9px] font-mono mt-1">
-              {b.role}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Text overlay */}
