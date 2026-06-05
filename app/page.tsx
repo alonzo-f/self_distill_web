@@ -83,7 +83,7 @@ export default function LandingPage() {
   };
 
   if (stage === "psa") {
-    return <PSAPlayer videoSrc="/psa.mp4" onComplete={handlePsaComplete} />;
+    return <PSAPlayer videoSrc="https://ajikekmbjgqcpdkoqmjb.supabase.co/storage/v1/object/public/media/psa.mp4" onComplete={handlePsaComplete} />;
   }
 
   // "checking" (returning-user redirect in flight) or "advancing"
