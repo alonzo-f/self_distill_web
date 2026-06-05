@@ -9,6 +9,16 @@ import { usePathname } from "next/navigation";
 
 export function DebugBar() {
   const pathname = usePathname();
+
+  // Hide entirely in production (e.g. the public Vercel deployment), so the
+  // installation looks "live" rather than in developer mode. Set
+  // NEXT_PUBLIC_SHOW_DEBUG_BAR=1 to force it back on — e.g. for on-site
+  // 演出 prep where testers need the one-click reset on a production build.
+  const showDebug =
+    process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_SHOW_DEBUG_BAR === "1";
+  if (!showDebug) return null;
+
   // Hide on /wall so the projection display stays clean.
   if (pathname === "/wall") return null;
 
